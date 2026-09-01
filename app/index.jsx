@@ -1,18 +1,5 @@
-import { StyleSheet, View, Text } from "react-native";
+import { Redirect } from 'expo-router';
 
-export default function HomeScreen() {
-    return (
-        <View style={styles.container}>
-            <Text>Olá mundo!</Text>
-        </View>
-    );
+export default function Index() {
+  return <Redirect href="/login" />;
 }
-
-const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        backgroundColor: '#ddd',
-        justifyContent: 'center',
-        alignItems: 'center',
-    }
-})
