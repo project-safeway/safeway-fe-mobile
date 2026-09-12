@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -16,12 +16,34 @@ import { Input } from '../components/Input';
 import { Button } from '../components/Button';
 import { colors } from '../constants/colors';
 import { validateLoginForm } from '../utils/validators';
+import { useKeyboardBottomInset } from '../hooks/useKeyboardBottomInset';
 
 export default function LoginScreen() {
+  const scrollRef = useRef(null);
+  const fieldY = useRef({});
+  const keyboardInset = useKeyboardBottomInset();
+  const [role, setRole] = useState('motorista');
   const [email, setEmail] = useState('');
   const [senha, setSenha] = useState('');
   const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);
+
+  const isResponsavel = role === 'responsavel';
+
+  const registerFieldY = (key) => (event) => {
+    fieldY.current[key] = event.nativeEvent.layout.y;
+  };
+
+  const focusField = (key) => () => {
+    const y = fieldY.current[key];
+    if (typeof y !== 'number') return;
+    requestAnimationFrame(() => {
+      scrollRef.current?.scrollTo({
+        y: Math.max(y - 24, 0),
+        animated: true,
+      });
+    });
+  };
 
   const handleLogin = () => {
     const result = validateLoginForm({ email, senha });
@@ -31,20 +53,31 @@ export default function LoginScreen() {
     setLoading(true);
     setTimeout(() => {
       setLoading(false);
-      router.replace('/(tabs)/menu');
+      if (isResponsavel) {
+        router.replace('/(pais)/inicio');
+      } else {
+        router.replace('/(motorista)/menu');
+      }
     }, 600);
   };
 
   return (
-    <SafeAreaView style={styles.safe}>
+    <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
       <KeyboardAvoidingView
         style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior="padding"
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 8 : 0}
       >
         <ScrollView
-          contentContainerStyle={styles.content}
+          ref={scrollRef}
+          contentContainerStyle={[
+            styles.content,
+            { paddingBottom: 28 + (Platform.OS === 'android' ? keyboardInset : 0) },
+          ]}
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
           showsVerticalScrollIndicator={false}
+          automaticallyAdjustKeyboardInsets
         >
           <View style={styles.header}>
             <View style={styles.logo}>
@@ -52,33 +85,60 @@ export default function LoginScreen() {
             </View>
             <Text style={styles.title}>Bem-vindo ao SafeWay</Text>
             <Text style={styles.subtitle}>
-              Seja bem-vindo de volta,{'\n'}Insira suas informações abaixo!
+              {isResponsavel
+                ? 'Monitore o transporte escolar do seu filho em tempo real'
+                : 'Gerencie rotas, alunos e o dia a dia do transporte escolar'}
             </Text>
           </View>
 
+          <View style={styles.roleSwitch}>
+            <TouchableOpacity
+              style={[styles.roleBtn, !isResponsavel && styles.roleBtnActive]}
+              onPress={() => setRole('motorista')}
+            >
+              <Text style={[styles.roleText, !isResponsavel && styles.roleTextActive]}>
+                Motorista
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.roleBtn, isResponsavel && styles.roleBtnActive]}
+              onPress={() => setRole('responsavel')}
+            >
+              <Text style={[styles.roleText, isResponsavel && styles.roleTextActive]}>
+                Responsável
+              </Text>
+            </TouchableOpacity>
+          </View>
+
           <View style={styles.form}>
-            <Input
-              label="E-mail"
-              placeholder="seuemail@exemplo.com.br"
-              value={email}
-              onChangeText={setEmail}
-              leftIcon="mail-outline"
-              keyboardType="email-address"
-              autoCapitalize="none"
-              autoCorrect={false}
-              variant="pill"
-              error={errors.email}
-            />
-            <Input
-              label="Senha"
-              placeholder="Digite sua senha de acesso"
-              value={senha}
-              onChangeText={setSenha}
-              leftIcon="lock-closed-outline"
-              isPassword
-              variant="pill"
-              error={errors.senha}
-            />
+            <View onLayout={registerFieldY('email')}>
+              <Input
+                label={isResponsavel ? 'E-mail dos pais' : 'E-mail'}
+                placeholder={
+                  isResponsavel ? 'responsavel@exemplo.com.br' : 'seuemail@exemplo.com.br'
+                }
+                value={email}
+                onChangeText={setEmail}
+                leftIcon="mail-outline"
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoCorrect={false}
+                error={errors.email}
+                onFocus={focusField('email')}
+              />
+            </View>
+            <View onLayout={registerFieldY('senha')}>
+              <Input
+                label="Senha"
+                placeholder="Digite sua senha de acesso"
+                value={senha}
+                onChangeText={setSenha}
+                leftIcon="lock-closed-outline"
+                isPassword
+                error={errors.senha}
+                onFocus={focusField('senha')}
+              />
+            </View>
 
             <TouchableOpacity
               style={styles.forgot}
@@ -88,18 +148,31 @@ export default function LoginScreen() {
             </TouchableOpacity>
           </View>
 
-          <View style={styles.actions}>
-            <Button title="Entrar no App" onPress={handleLogin} loading={loading} />
+          <Button title="Entrar no App" onPress={handleLogin} loading={loading} />
 
-            <View style={styles.dividerRow}>
-              <View style={styles.divider} />
-              <Text style={styles.dividerText}>OU</Text>
-              <View style={styles.divider} />
-            </View>
+          <View style={styles.footer}>
+            {isResponsavel ? (
+              <TouchableOpacity
+                style={styles.inviteLink}
+                onPress={() => router.push('/convite/enzo-gabriel-silva')}
+              >
+                <Text style={styles.inviteText}>
+                  Recebeu um convite de motorista? Acesse aqui
+                </Text>
+              </TouchableOpacity>
+            ) : (
+              <>
+                <View style={styles.dividerRow}>
+                  <View style={styles.divider} />
+                  <Text style={styles.dividerText}>OU</Text>
+                  <View style={styles.divider} />
+                </View>
 
-            <Link href="/register" asChild>
-              <Button title="Criar uma nova conta" variant="outline" />
-            </Link>
+                <Link href="/register" asChild>
+                  <Button title="Criar uma nova conta" variant="outline" />
+                </Link>
+              </>
+            )}
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -118,12 +191,11 @@ const styles = StyleSheet.create({
   content: {
     flexGrow: 1,
     paddingHorizontal: 28,
-    paddingTop: 36,
-    paddingBottom: 28,
+    paddingTop: 28,
   },
   header: {
     alignItems: 'center',
-    marginBottom: 36,
+    marginBottom: 24,
   },
   logo: {
     width: 72,
@@ -146,9 +218,36 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     textAlign: 'center',
     lineHeight: 22,
+    paddingHorizontal: 8,
+    minHeight: 44,
+  },
+  roleSwitch: {
+    flexDirection: 'row',
+    backgroundColor: '#F1EEEA',
+    borderRadius: 14,
+    padding: 4,
+    marginBottom: 22,
+  },
+  roleBtn: {
+    flex: 1,
+    minHeight: 42,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  roleBtnActive: {
+    backgroundColor: colors.primary,
+  },
+  roleText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+  roleTextActive: {
+    color: colors.white,
   },
   form: {
-    marginBottom: 28,
+    marginBottom: 20,
   },
   forgot: {
     alignSelf: 'flex-end',
@@ -159,9 +258,10 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     textDecorationLine: 'underline',
   },
-  actions: {
-    marginTop: 'auto',
+  footer: {
+    marginTop: 16,
     gap: 16,
+    minHeight: 120,
   },
   dividerRow: {
     flexDirection: 'row',
@@ -177,5 +277,15 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: colors.textMuted,
     fontWeight: '600',
+  },
+  inviteLink: {
+    alignItems: 'center',
+    paddingVertical: 16,
+  },
+  inviteText: {
+    fontSize: 13,
+    color: colors.primaryDark,
+    textDecorationLine: 'underline',
+    textAlign: 'center',
   },
 });

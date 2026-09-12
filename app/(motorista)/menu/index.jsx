@@ -11,42 +11,56 @@ const menuItems = [
     title: 'Alunos',
     subtitle: 'Gestão escolar',
     icon: 'people-outline',
-    href: '/(tabs)/alunos',
+    href: '/(motorista)/alunos',
   },
   {
     key: 'chamada',
     title: 'Chamada',
     subtitle: 'Diário de bordo',
     icon: 'clipboard-outline',
-    href: '/(tabs)/chamada',
+    href: '/(motorista)/chamada',
   },
   {
     key: 'escolas',
     title: 'Escolas',
     subtitle: 'Instituições',
     icon: 'business-outline',
-    href: '/(tabs)/menu/escolas',
+    href: '/(motorista)/menu/escolas',
   },
   {
     key: 'financeiro',
     title: 'Financeiro',
     subtitle: 'Fluxo de caixa',
     icon: 'wallet-outline',
-    href: '/(tabs)/financeiro',
+    href: '/(motorista)/financeiro',
   },
   {
     key: 'itinerario',
     title: 'Itinerário',
     subtitle: 'Pontos de embarque',
     icon: 'location-outline',
-    href: '/(tabs)/itinerario',
+    href: '/(motorista)/itinerario',
   },
   {
     key: 'rotas',
     title: 'Rotas',
     subtitle: 'Mapas e tempos',
     icon: 'navigate-outline',
-    href: '/(tabs)/rotas',
+    href: '/(motorista)/rotas',
+  },
+  {
+    key: 'mensagens',
+    title: 'Mensagens',
+    subtitle: 'Chat com pais',
+    icon: 'chatbubble-outline',
+    href: '/(motorista)/menu/mensagens',
+  },
+  {
+    key: 'perfil',
+    title: 'Perfil',
+    subtitle: 'Dados da conta',
+    icon: 'person-outline',
+    href: '/(motorista)/menu/perfil',
   },
 ];
 
@@ -59,9 +73,12 @@ export default function MenuDashboardScreen() {
             <Text style={styles.eyebrow}>Painel Geral</Text>
             <Text style={styles.greeting}>Olá, Motorista Carlos</Text>
           </View>
-          <View style={styles.avatar}>
+          <TouchableOpacity
+            style={styles.avatar}
+            onPress={() => router.push('/(motorista)/menu/perfil')}
+          >
             <Ionicons name="person" size={28} color={colors.textSecondary} />
-          </View>
+          </TouchableOpacity>
         </View>
 
         <View style={styles.statusCard}>

@@ -17,7 +17,9 @@ export default function RootLayout() {
         <Stack.Screen name="index" />
         <Stack.Screen name="login" />
         <Stack.Screen name="register" />
-        <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="convite/[id]" />
+        <Stack.Screen name="(motorista)" />
+        <Stack.Screen name="(pais)" />
       </Stack>
     </>
   );
