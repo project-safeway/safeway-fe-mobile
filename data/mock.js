@@ -1,78 +1,414 @@
-export const mockAlunos = [
+/** Mocks alinhados ao formato esperado pelo front-end web. */
+
+export const mockMotorista = {
+  id: 1,
+  nome: 'Carlos Mendes',
+  email: 'carlos.mendes@safeway.com',
+  telefone: '(11) 98888-7777',
+  veiculo: 'Sprinter 415',
+  placa: 'ABC1D23',
+  fotoUri: null,
+};
+
+export const mockEscolasComAlunos = [
   {
-    id: 1,
-    name: 'Enzo Gabriel Silva',
-    school: 'Colégio Anchieta',
-    guardian: 'Mariana Silva',
-    phone: '(11) 98765-4321',
+    escola: {
+      id: 1,
+      nome: 'Colégio Anchieta',
+      nivelEnsino: 'ENSINO_FUNDAMENTAL',
+      endereco: {
+        logradouro: 'Av. Paulista',
+        numero: '1200',
+        bairro: 'Bela Vista',
+        cidade: 'São Paulo',
+        uf: 'SP',
+        cep: '01310100',
+      },
+    },
+    alunos: [
+      { id: 1, nome: 'Enzo Gabriel Silva', serie: 3, sala: 'A', professor: 'Ana Paula' },
+      { id: 5, nome: 'Arthur Barbosa', serie: 3, sala: 'B', professor: 'Ana Paula' },
+    ],
   },
   {
-    id: 2,
-    name: 'Valentina Souza',
-    school: 'Escola Est. Dom Pedro II',
-    guardian: 'Carlos Souza',
-    phone: '(11) 97654-3210',
+    escola: {
+      id: 2,
+      nome: 'Escola Est. Dom Pedro II',
+      nivelEnsino: 'ENSINO_FUNDAMENTAL',
+      endereco: {
+        logradouro: 'Rua Augusta',
+        numero: '850',
+        bairro: 'Consolação',
+        cidade: 'São Paulo',
+        uf: 'SP',
+        cep: '01305000',
+      },
+    },
+    alunos: [
+      { id: 2, nome: 'Valentina Souza', serie: 2, sala: 'C', professor: 'Marcos Lima' },
+    ],
   },
   {
-    id: 3,
-    name: 'Thiago Oliveira',
-    school: 'Colégio Santa Maria',
-    guardian: 'Ana Oliveira',
-    phone: '(11) 96543-2109',
+    escola: {
+      id: 3,
+      nome: 'Colégio Santa Maria',
+      nivelEnsino: 'ENSINO_FUNDAMENTAL',
+      endereco: {
+        logradouro: 'Av. Brigadeiro Faria Lima',
+        numero: '2200',
+        bairro: 'Itaim Bibi',
+        cidade: 'São Paulo',
+        uf: 'SP',
+        cep: '01452000',
+      },
+    },
+    alunos: [
+      { id: 3, nome: 'Thiago Oliveira', serie: 4, sala: 'A', professor: 'Carla Mendes' },
+      { id: 6, nome: 'Beatriz Lima', serie: 5, sala: 'B', professor: 'Carla Mendes' },
+    ],
   },
   {
-    id: 4,
-    name: 'Mariana Santos',
-    school: 'Escola Maple Bear',
-    guardian: 'Roberto Santos',
-    phone: '(11) 95432-1098',
-  },
-  {
-    id: 5,
-    name: 'Arthur Barbosa',
-    school: 'Colégio Anchieta',
-    guardian: 'Fernanda Barbosa',
-    phone: '(11) 94321-0987',
-  },
-  {
-    id: 6,
-    name: 'Beatriz Lima',
-    school: 'Colégio Santa Maria',
-    guardian: 'Paulo Lima',
-    phone: '(11) 93210-9876',
+    escola: {
+      id: 4,
+      nome: 'Escola Maple Bear',
+      nivelEnsino: 'PRE_ESCOLA',
+      endereco: {
+        logradouro: 'Rua Oscar Freire',
+        numero: '340',
+        bairro: 'Jardins',
+        cidade: 'São Paulo',
+        uf: 'SP',
+        cep: '01426000',
+      },
+    },
+    alunos: [
+      { id: 4, nome: 'Mariana Santos', serie: 1, sala: 'A', professor: 'Juliana Rocha' },
+    ],
   },
 ];
 
-export const mockEscolas = [
+export const mockAlunosDetalhe = {
+  1: {
+    id: 1,
+    nome: 'Enzo Gabriel Silva',
+    dtNascimento: '2016-03-12',
+    serie: 3,
+    sala: 'A',
+    professor: 'Ana Paula',
+    valorPadraoMensalidade: 450,
+    diaVencimento: 10,
+    escola: mockEscolasComAlunos[0].escola,
+    responsaveis: [
+      {
+        id: 1,
+        nome: 'Mariana Silva',
+        cpf: '123.456.789-00',
+        tel1: '(11) 98765-4321',
+        tel2: null,
+        email: 'mariana.silva@email.com',
+        endereco: {
+          logradouro: 'Rua Pamplona',
+          numero: '450',
+          complemento: 'Ap 32',
+          bairro: 'Jardim Paulista',
+          cidade: 'São Paulo',
+          uf: 'SP',
+          cep: '01405000',
+        },
+      },
+    ],
+  },
+  2: {
+    id: 2,
+    nome: 'Valentina Souza',
+    dtNascimento: '2017-08-21',
+    serie: 2,
+    sala: 'C',
+    professor: 'Marcos Lima',
+    valorPadraoMensalidade: 450,
+    diaVencimento: 5,
+    escola: mockEscolasComAlunos[1].escola,
+    responsaveis: [
+      {
+        id: 2,
+        nome: 'Carlos Souza',
+        cpf: '987.654.321-00',
+        tel1: '(11) 97654-3210',
+        email: 'carlos.souza@email.com',
+        endereco: {
+          logradouro: 'Av. Brigadeiro Luís Antônio',
+          numero: '890',
+          bairro: 'Bela Vista',
+          cidade: 'São Paulo',
+          uf: 'SP',
+          cep: '01317000',
+        },
+      },
+    ],
+  },
+  3: {
+    id: 3,
+    nome: 'Thiago Oliveira',
+    dtNascimento: '2015-01-09',
+    serie: 4,
+    sala: 'A',
+    professor: 'Carla Mendes',
+    valorPadraoMensalidade: 480,
+    diaVencimento: 10,
+    escola: mockEscolasComAlunos[2].escola,
+    responsaveis: [
+      {
+        id: 3,
+        nome: 'Ana Oliveira',
+        tel1: '(11) 96543-2109',
+        email: 'ana.oliveira@email.com',
+        endereco: {
+          logradouro: 'Rua da Consolação',
+          numero: '2100',
+          bairro: 'Consolação',
+          cidade: 'São Paulo',
+          uf: 'SP',
+          cep: '01302000',
+        },
+      },
+    ],
+  },
+  4: {
+    id: 4,
+    nome: 'Mariana Santos',
+    dtNascimento: '2018-11-02',
+    serie: 1,
+    sala: 'A',
+    professor: 'Juliana Rocha',
+    valorPadraoMensalidade: 520,
+    diaVencimento: 15,
+    escola: mockEscolasComAlunos[3].escola,
+    responsaveis: [
+      {
+        id: 4,
+        nome: 'Roberto Santos',
+        tel1: '(11) 95432-1098',
+        email: 'roberto.santos@email.com',
+        endereco: {
+          logradouro: 'Rua Haddock Lobo',
+          numero: '595',
+          bairro: 'Cerqueira César',
+          cidade: 'São Paulo',
+          uf: 'SP',
+          cep: '01414000',
+        },
+      },
+    ],
+  },
+  5: {
+    id: 5,
+    nome: 'Arthur Barbosa',
+    dtNascimento: '2016-06-30',
+    serie: 3,
+    sala: 'B',
+    professor: 'Ana Paula',
+    valorPadraoMensalidade: 450,
+    diaVencimento: 10,
+    escola: mockEscolasComAlunos[0].escola,
+    responsaveis: [
+      {
+        id: 5,
+        nome: 'Fernanda Barbosa',
+        tel1: '(11) 94321-0987',
+        email: 'fernanda.barbosa@email.com',
+        endereco: {
+          logradouro: 'Alameda Santos',
+          numero: '1200',
+          bairro: 'Jardim Paulista',
+          cidade: 'São Paulo',
+          uf: 'SP',
+          cep: '01418000',
+        },
+      },
+    ],
+  },
+  6: {
+    id: 6,
+    nome: 'Beatriz Lima',
+    dtNascimento: '2014-09-18',
+    serie: 5,
+    sala: 'B',
+    professor: 'Carla Mendes',
+    valorPadraoMensalidade: 480,
+    diaVencimento: 10,
+    escola: mockEscolasComAlunos[2].escola,
+    responsaveis: [
+      {
+        id: 6,
+        nome: 'Paulo Lima',
+        tel1: '(11) 93210-9876',
+        email: 'paulo.lima@email.com',
+        endereco: {
+          logradouro: 'Rua Bela Cintra',
+          numero: '780',
+          bairro: 'Consolação',
+          cidade: 'São Paulo',
+          uf: 'SP',
+          cep: '01415000',
+        },
+      },
+    ],
+  },
+};
+
+export const mockItinerarios = [
   {
     id: 1,
-    name: 'Colégio Anchieta',
-    address: 'Av. Paulista, 1200 - Bela Vista',
-    students: 14,
-    phone: '(11) 3244-8800',
+    nome: 'Rota Escolar da Manhã',
+    horarioInicio: '06:30',
+    horarioFim: '07:45',
+    tipoViagem: 'SO_IDA',
+    ativo: true,
+    alunos: [
+      {
+        alunoId: 1,
+        nomeAluno: 'Enzo Gabriel Silva',
+        nomeResponsavel: 'Mariana Silva',
+        nomeEscola: 'Colégio Anchieta',
+        sala: 'A',
+        ordemEmbarque: 1,
+        ordemGlobal: 1,
+      },
+      {
+        alunoId: 2,
+        nomeAluno: 'Valentina Souza',
+        nomeResponsavel: 'Carlos Souza',
+        nomeEscola: 'Escola Est. Dom Pedro II',
+        sala: 'C',
+        ordemEmbarque: 2,
+        ordemGlobal: 2,
+      },
+      {
+        alunoId: 3,
+        nomeAluno: 'Thiago Oliveira',
+        nomeResponsavel: 'Ana Oliveira',
+        nomeEscola: 'Colégio Santa Maria',
+        sala: 'A',
+        ordemEmbarque: 3,
+        ordemGlobal: 4,
+      },
+      {
+        alunoId: 5,
+        nomeAluno: 'Arthur Barbosa',
+        nomeResponsavel: 'Fernanda Barbosa',
+        nomeEscola: 'Colégio Anchieta',
+        sala: 'B',
+        ordemEmbarque: 4,
+        ordemGlobal: 5,
+      },
+    ],
+    escolas: [
+      {
+        escolaId: 1,
+        nome: 'Colégio Anchieta',
+        cidade: 'São Paulo',
+        ordemVisita: 1,
+        ordemGlobal: 3,
+      },
+      {
+        escolaId: 2,
+        nome: 'Escola Est. Dom Pedro II',
+        cidade: 'São Paulo',
+        ordemVisita: 2,
+        ordemGlobal: 6,
+      },
+      {
+        escolaId: 3,
+        nome: 'Colégio Santa Maria',
+        cidade: 'São Paulo',
+        ordemVisita: 3,
+        ordemGlobal: 7,
+      },
+    ],
   },
   {
     id: 2,
-    name: 'Escola Est. Dom Pedro II',
-    address: 'Rua Augusta, 850 - Consolação',
-    students: 9,
-    phone: '(11) 3122-4500',
-  },
-  {
-    id: 3,
-    name: 'Colégio Santa Maria',
-    address: 'Av. Brigadeiro Faria Lima, 2200',
-    students: 11,
-    phone: '(11) 3030-7700',
-  },
-  {
-    id: 4,
-    name: 'Escola Maple Bear',
-    address: 'Rua Oscar Freire, 340 - Jardins',
-    students: 7,
-    phone: '(11) 3088-1200',
+    nome: 'Rota Escolar da Tarde',
+    horarioInicio: '16:30',
+    horarioFim: '18:00',
+    tipoViagem: 'SO_VOLTA',
+    ativo: true,
+    alunos: [
+      {
+        alunoId: 4,
+        nomeAluno: 'Mariana Santos',
+        nomeResponsavel: 'Roberto Santos',
+        nomeEscola: 'Escola Maple Bear',
+        sala: 'A',
+        ordemEmbarque: 1,
+        ordemGlobal: 1,
+      },
+      {
+        alunoId: 6,
+        nomeAluno: 'Beatriz Lima',
+        nomeResponsavel: 'Paulo Lima',
+        nomeEscola: 'Colégio Santa Maria',
+        sala: 'B',
+        ordemEmbarque: 2,
+        ordemGlobal: 2,
+      },
+    ],
+    escolas: [
+      {
+        escolaId: 4,
+        nome: 'Escola Maple Bear',
+        cidade: 'São Paulo',
+        ordemVisita: 1,
+        ordemGlobal: 3,
+      },
+      {
+        escolaId: 3,
+        nome: 'Colégio Santa Maria',
+        cidade: 'São Paulo',
+        ordemVisita: 2,
+        ordemGlobal: 4,
+      },
+    ],
   },
 ];
+
+export const mockHistoricoChamadas = {
+  1: [
+    {
+      id: 101,
+      data: '2024-10-23',
+      status: 'FINALIZADA',
+      alunos: [
+        { aluno: { id: 1, nome: 'Enzo Gabriel Silva', escola: { nome: 'Colégio Anchieta' } }, presente: true },
+        { aluno: { id: 2, nome: 'Valentina Souza', escola: { nome: 'Escola Est. Dom Pedro II' } }, presente: true },
+        { aluno: { id: 3, nome: 'Thiago Oliveira', escola: { nome: 'Colégio Santa Maria' } }, presente: false },
+        { aluno: { id: 5, nome: 'Arthur Barbosa', escola: { nome: 'Colégio Anchieta' } }, presente: true },
+      ],
+    },
+    {
+      id: 100,
+      data: '2024-10-22',
+      status: 'FINALIZADA',
+      alunos: [
+        { aluno: { id: 1, nome: 'Enzo Gabriel Silva', escola: { nome: 'Colégio Anchieta' } }, presente: true },
+        { aluno: { id: 2, nome: 'Valentina Souza', escola: { nome: 'Escola Est. Dom Pedro II' } }, presente: true },
+        { aluno: { id: 3, nome: 'Thiago Oliveira', escola: { nome: 'Colégio Santa Maria' } }, presente: true },
+        { aluno: { id: 5, nome: 'Arthur Barbosa', escola: { nome: 'Colégio Anchieta' } }, presente: true },
+      ],
+    },
+  ],
+  2: [
+    {
+      id: 201,
+      data: '2024-10-23',
+      status: 'FINALIZADA',
+      alunos: [
+        { aluno: { id: 4, nome: 'Mariana Santos', escola: { nome: 'Escola Maple Bear' } }, presente: true },
+        { aluno: { id: 6, nome: 'Beatriz Lima', escola: { nome: 'Colégio Santa Maria' } }, presente: true },
+      ],
+    },
+  ],
+};
 
 export const mockFinanceiro = {
   receitaTotal: 4850,
@@ -89,46 +425,4 @@ export const mockFinanceiro = {
     { id: 2, description: 'Manutenção preventiva', date: 'Pago em 18/10', amount: 420 },
     { id: 3, description: 'Seguro mensal', date: 'Pago em 10/10', amount: 320 },
   ],
-  chartReceitaDespesas: [
-    { month: 'Jul', receita: 4200, despesa: 1500 },
-    { month: 'Ago', receita: 4400, despesa: 1600 },
-    { month: 'Set', receita: 4100, despesa: 1450 },
-    { month: 'Out', receita: 4600, despesa: 1700 },
-    { month: 'Nov', receita: 4700, despesa: 1550 },
-    { month: 'Dez', receita: 4850, despesa: 1620 },
-  ],
-  composicaoDespesas: [
-    { label: 'Combustível', percent: 40, color: '#F6923E' },
-    { label: 'Manutenção', percent: 25, color: '#5C4033' },
-    { label: 'Seguro', percent: 20, color: '#E05D26' },
-    { label: 'Outros', percent: 15, color: '#F5C6A0' },
-  ],
 };
-
-export const mockItinerario = [
-  { id: 1, name: 'Enzo Gabriel Silva', address: 'Rua Pamplona, 450 - Ap 32', time: '06:45' },
-  { id: 2, name: 'Valentina Souza', address: 'Av. Brigadeiro Luís Antônio, 890', time: '06:55' },
-  { id: 3, name: 'Thiago Oliveira', address: 'Rua da Consolação, 2100', time: '07:05' },
-  { id: 4, name: 'Mariana Santos', address: 'Rua Haddock Lobo, 595', time: '07:15' },
-  { id: 5, name: 'Arthur Barbosa', address: 'Alameda Santos, 1200', time: '07:25' },
-  { id: 6, name: 'Beatriz Lima', address: 'Rua Bela Cintra, 780', time: '07:35' },
-];
-
-export const mockRotas = {
-  distancia: '14.8 km',
-  tempoEstimado: '45 mins',
-  pontos: '6 paradas',
-  gpsConectado: true,
-  paradas: [
-    { id: 1, name: 'Enzo Gabriel', status: 'embarcado', time: '06:45 - Ok', type: 'done' },
-    { id: 2, name: 'Valentina Souza', status: 'ausente', time: '06:55', type: 'absent' },
-    { id: 3, name: 'Thiago Oliveira', status: 'próximo', time: '07:05', type: 'next' },
-    { id: 4, name: 'Mariana Santos', status: null, time: '07:15', type: 'pending' },
-  ],
-};
-
-export const mockChamadaHistorico = [
-  { id: 1, label: 'Ontem, 23/10', percent: 100 },
-  { id: 2, label: 'Quarta, 22/10', percent: 83 },
-  { id: 3, label: 'Terça, 21/10', percent: 100 },
-];

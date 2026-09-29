@@ -1,4 +1,15 @@
 export {
+  formatCurrency,
+  formatPhone,
+  maskPhone,
+  maskPlaca,
+  maskCEP,
+  maskCPF,
+  maskDate,
+  formatDate,
+} from './formatters';
+
+export {
   isValidEmail,
   isValidPassword,
   validatePassword,
@@ -10,13 +21,5 @@ export {
   validateLoginForm,
   validateRegisterForm,
 } from './validators';
-
-export {
-  formatCurrency,
-  formatPhone,
-  maskPhone,
-  maskPlaca,
-  formatDate,
-} from './formatters';
 
 export { VALIDATION_MESSAGES, REGEX_PATTERNS } from './constants';

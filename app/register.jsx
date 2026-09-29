@@ -18,10 +18,12 @@ import { Checkbox } from '../components/Checkbox';
 import { colors } from '../constants/colors';
 import { validateRegisterForm, validatePassword, isValidPhone, validatePlaca } from '../utils/validators';
 import { maskPhone, maskPlaca } from '../utils/formatters';
+import { useKeyboardBottomInset } from '../hooks/useKeyboardBottomInset';
 
 export default function RegisterScreen() {
   const scrollRef = useRef(null);
   const fieldY = useRef({});
+  const keyboardInset = useKeyboardBottomInset();
   const [form, setForm] = useState({
     nome: '',
     email: '',
@@ -119,7 +121,7 @@ export default function RegisterScreen() {
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
       <KeyboardAvoidingView
         style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        behavior="padding"
         keyboardVerticalOffset={Platform.OS === 'ios' ? 8 : 0}
       >
         <View style={styles.topBar}>
@@ -136,7 +138,10 @@ export default function RegisterScreen() {
 
         <ScrollView
           ref={scrollRef}
-          contentContainerStyle={styles.content}
+          contentContainerStyle={[
+            styles.content,
+            { paddingBottom: 140 + (Platform.OS === 'android' ? keyboardInset : 0) },
+          ]}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
           showsVerticalScrollIndicator={false}

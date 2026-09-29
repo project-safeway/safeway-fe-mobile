@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -16,12 +16,28 @@ import { Input } from '../components/Input';
 import { Button } from '../components/Button';
 import { colors } from '../constants/colors';
 import { validateLoginForm } from '../utils/validators';
+import { useKeyboardBottomInset } from '../hooks/useKeyboardBottomInset';
 
 export default function LoginScreen() {
+  const scrollRef = useRef(null);
+  const fieldY = useRef({});
+  const keyboardInset = useKeyboardBottomInset();
   const [email, setEmail] = useState('');
   const [senha, setSenha] = useState('');
   const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);
+
+  const registerFieldY = (key) => (e) => {
+    fieldY.current[key] = e.nativeEvent.layout.y;
+  };
+
+  const focusField = (key) => () => {
+    const y = fieldY.current[key];
+    if (typeof y !== 'number') return;
+    requestAnimationFrame(() => {
+      scrollRef.current?.scrollTo({ y: Math.max(y - 24, 0), animated: true });
+    });
+  };
 
   const handleLogin = () => {
     const result = validateLoginForm({ email, senha });
@@ -31,20 +47,27 @@ export default function LoginScreen() {
     setLoading(true);
     setTimeout(() => {
       setLoading(false);
-      router.replace('/(tabs)/menu');
-    }, 600);
+      router.replace('/(app)');
+    }, 500);
   };
 
   return (
-    <SafeAreaView style={styles.safe}>
+    <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
       <KeyboardAvoidingView
         style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior="padding"
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 8 : 0}
       >
         <ScrollView
-          contentContainerStyle={styles.content}
+          ref={scrollRef}
+          contentContainerStyle={[
+            styles.content,
+            { paddingBottom: 28 + (Platform.OS === 'android' ? keyboardInset : 0) },
+          ]}
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
           showsVerticalScrollIndicator={false}
+          automaticallyAdjustKeyboardInsets
         >
           <View style={styles.header}>
             <View style={styles.logo}>
@@ -57,28 +80,34 @@ export default function LoginScreen() {
           </View>
 
           <View style={styles.form}>
-            <Input
-              label="E-mail"
-              placeholder="seuemail@exemplo.com.br"
-              value={email}
-              onChangeText={setEmail}
-              leftIcon="mail-outline"
-              keyboardType="email-address"
-              autoCapitalize="none"
-              autoCorrect={false}
-              variant="pill"
-              error={errors.email}
-            />
-            <Input
-              label="Senha"
-              placeholder="Digite sua senha de acesso"
-              value={senha}
-              onChangeText={setSenha}
-              leftIcon="lock-closed-outline"
-              isPassword
-              variant="pill"
-              error={errors.senha}
-            />
+            <View onLayout={registerFieldY('email')}>
+              <Input
+                label="E-mail"
+                placeholder="seuemail@exemplo.com.br"
+                value={email}
+                onChangeText={setEmail}
+                leftIcon="mail-outline"
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoCorrect={false}
+                variant="pill"
+                error={errors.email}
+                onFocus={focusField('email')}
+              />
+            </View>
+            <View onLayout={registerFieldY('senha')}>
+              <Input
+                label="Senha"
+                placeholder="Digite sua senha de acesso"
+                value={senha}
+                onChangeText={setSenha}
+                leftIcon="lock-closed-outline"
+                isPassword
+                variant="pill"
+                error={errors.senha}
+                onFocus={focusField('senha')}
+              />
+            </View>
 
             <TouchableOpacity
               style={styles.forgot}
@@ -88,15 +117,14 @@ export default function LoginScreen() {
             </TouchableOpacity>
           </View>
 
-          <View style={styles.actions}>
-            <Button title="Entrar no App" onPress={handleLogin} loading={loading} />
+          <Button title="Entrar no App" onPress={handleLogin} loading={loading} />
 
+          <View style={styles.footer}>
             <View style={styles.dividerRow}>
               <View style={styles.divider} />
               <Text style={styles.dividerText}>OU</Text>
               <View style={styles.divider} />
             </View>
-
             <Link href="/register" asChild>
               <Button title="Criar uma nova conta" variant="outline" />
             </Link>
@@ -108,23 +136,10 @@ export default function LoginScreen() {
 }
 
 const styles = StyleSheet.create({
-  safe: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  flex: {
-    flex: 1,
-  },
-  content: {
-    flexGrow: 1,
-    paddingHorizontal: 28,
-    paddingTop: 36,
-    paddingBottom: 28,
-  },
-  header: {
-    alignItems: 'center',
-    marginBottom: 36,
-  },
+  safe: { flex: 1, backgroundColor: colors.background },
+  flex: { flex: 1 },
+  content: { flexGrow: 1, paddingHorizontal: 28, paddingTop: 36 },
+  header: { alignItems: 'center', marginBottom: 36 },
   logo: {
     width: 72,
     height: 72,
@@ -147,35 +162,15 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 22,
   },
-  form: {
-    marginBottom: 28,
-  },
-  forgot: {
-    alignSelf: 'flex-end',
-    marginTop: -4,
-  },
+  form: { marginBottom: 20 },
+  forgot: { alignSelf: 'flex-end', marginTop: -4 },
   forgotText: {
     fontSize: 13,
     color: colors.textSecondary,
     textDecorationLine: 'underline',
   },
-  actions: {
-    marginTop: 'auto',
-    gap: 16,
-  },
-  dividerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  divider: {
-    flex: 1,
-    height: 1,
-    backgroundColor: colors.border,
-  },
-  dividerText: {
-    fontSize: 12,
-    color: colors.textMuted,
-    fontWeight: '600',
-  },
+  footer: { marginTop: 16, gap: 16 },
+  dividerRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  divider: { flex: 1, height: 1, backgroundColor: colors.border },
+  dividerText: { fontSize: 12, color: colors.textMuted, fontWeight: '600' },
 });

@@ -4,15 +4,14 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '../../constants/colors';
 
 const tabs = [
-  { name: 'menu', title: 'Menu', icon: 'grid-outline', iconFocused: 'grid' },
+  { name: 'index', title: 'Início', icon: 'home-outline', iconFocused: 'home' },
   { name: 'alunos', title: 'Alunos', icon: 'people-outline', iconFocused: 'people' },
-  { name: 'chamada', title: 'Chamada', icon: 'clipboard-outline', iconFocused: 'clipboard' },
+  { name: 'itinerarios', title: 'Itinerário', icon: 'map-outline', iconFocused: 'map' },
   { name: 'financeiro', title: 'Financeiro', icon: 'wallet-outline', iconFocused: 'wallet' },
-  { name: 'itinerario', title: 'Itinerário', icon: 'location-outline', iconFocused: 'location' },
-  { name: 'rotas', title: 'Rotas', icon: 'navigate-outline', iconFocused: 'navigate' },
+  { name: 'perfil', title: 'Perfil', icon: 'person-outline', iconFocused: 'person' },
 ];
 
-export default function TabsLayout() {
+export default function AppLayout() {
   const insets = useSafeAreaInsets();
   const bottomPad = Math.max(insets.bottom, 8);
 
@@ -24,14 +23,13 @@ export default function TabsLayout() {
         tabBarInactiveTintColor: colors.tabInactive,
         tabBarStyle: {
           backgroundColor: colors.white,
-          borderTopColor: colors.borderLight,
-          borderTopWidth: 1,
+          borderTopColor: colors.border,
           height: 56 + bottomPad,
-          paddingBottom: bottomPad,
           paddingTop: 6,
+          paddingBottom: bottomPad,
         },
         tabBarLabelStyle: {
-          fontSize: 10,
+          fontSize: 11,
           fontWeight: '600',
         },
       }}
@@ -42,10 +40,10 @@ export default function TabsLayout() {
           name={tab.name}
           options={{
             title: tab.title,
-            tabBarIcon: ({ color, focused }) => (
+            tabBarIcon: ({ color, focused, size }) => (
               <Ionicons
                 name={focused ? tab.iconFocused : tab.icon}
-                size={22}
+                size={size ?? 22}
                 color={color}
               />
             ),
