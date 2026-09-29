@@ -10,7 +10,6 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
 import { ScreenHeader } from '../../components/ScreenHeader';
 import { Card } from '../../components/Card';
 import { colors } from '../../constants/colors';
@@ -71,25 +70,6 @@ export default function AlunosScreen() {
                 <Text style={styles.school}>{item.school}</Text>
               </View>
               <View style={styles.actions}>
-                <TouchableOpacity
-                  style={styles.iconBtn}
-                  accessibilityLabel="Gerar convite"
-                  onPress={() =>
-                    Alert.alert(
-                      'Link de convite',
-                      `safeway://convite/${item.inviteId}\n\nCompartilhe este link com o responsável.`,
-                      [
-                        { text: 'Fechar', style: 'cancel' },
-                        {
-                          text: 'Abrir tela',
-                          onPress: () => router.push(`/convite/${item.inviteId}`),
-                        },
-                      ]
-                    )
-                  }
-                >
-                  <Ionicons name="link-outline" size={16} color={colors.textSecondary} />
-                </TouchableOpacity>
                 <TouchableOpacity style={styles.iconBtn} accessibilityLabel="Editar aluno">
                   <Ionicons name="pencil-outline" size={16} color={colors.textSecondary} />
                 </TouchableOpacity>
