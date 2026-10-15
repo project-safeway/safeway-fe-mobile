@@ -23,6 +23,8 @@ export const mockEscolasComAlunos = [
         cidade: 'São Paulo',
         uf: 'SP',
         cep: '01310100',
+        latitude: -23.668179,
+        longitude: -46.491718,
       },
     },
     alunos: [
@@ -42,6 +44,8 @@ export const mockEscolasComAlunos = [
         cidade: 'São Paulo',
         uf: 'SP',
         cep: '01305000',
+        latitude: -23.670554,
+        longitude: -46.497688,
       },
     },
     alunos: [
@@ -60,6 +64,8 @@ export const mockEscolasComAlunos = [
         cidade: 'São Paulo',
         uf: 'SP',
         cep: '01452000',
+        latitude: -23.668725,
+        longitude: -46.499551,
       },
     },
     alunos: [
@@ -79,6 +85,8 @@ export const mockEscolasComAlunos = [
         cidade: 'São Paulo',
         uf: 'SP',
         cep: '01426000',
+        latitude: -23.5643,
+        longitude: -46.6688,
       },
     },
     alunos: [
@@ -114,6 +122,8 @@ export const mockAlunosDetalhe = {
           cidade: 'São Paulo',
           uf: 'SP',
           cep: '01405000',
+          latitude: -23.668023,
+          longitude: -46.494976,
         },
       },
     ],
@@ -142,6 +152,8 @@ export const mockAlunosDetalhe = {
           cidade: 'São Paulo',
           uf: 'SP',
           cep: '01317000',
+          latitude: -23.668393,
+          longitude: -46.493069,
         },
       },
     ],
@@ -169,6 +181,8 @@ export const mockAlunosDetalhe = {
           cidade: 'São Paulo',
           uf: 'SP',
           cep: '01302000',
+          latitude: -23.669867,
+          longitude: -46.494595,
         },
       },
     ],
@@ -196,6 +210,8 @@ export const mockAlunosDetalhe = {
           cidade: 'São Paulo',
           uf: 'SP',
           cep: '01414000',
+          latitude: -23.5603,
+          longitude: -46.6639,
         },
       },
     ],
@@ -223,6 +239,8 @@ export const mockAlunosDetalhe = {
           cidade: 'São Paulo',
           uf: 'SP',
           cep: '01418000',
+          latitude: -23.671090,
+          longitude: -46.495606,
         },
       },
     ],
@@ -250,6 +268,8 @@ export const mockAlunosDetalhe = {
           cidade: 'São Paulo',
           uf: 'SP',
           cep: '01415000',
+          latitude: -23.5571,
+          longitude: -46.6601,
         },
       },
     ],
@@ -372,42 +392,63 @@ export const mockItinerarios = [
   },
 ];
 
+const alunoChamada = (id, nome, sala, escola) => ({ id, nome, sala, escola: { nome: escola } });
+
+/** Formato de `content` retornado por GET /chamada/historico/{itinerarioId}. */
 export const mockHistoricoChamadas = {
   1: [
     {
-      id: 101,
-      data: '2024-10-23',
+      id: 103,
+      status: 'EM_ANDAMENTO',
+      alunos: [
+        { aluno: alunoChamada(1, 'Enzo Gabriel Silva', 'A', 'Colégio Anchieta'), presenca: 'PRESENTE', dataHora: '2024-10-24T06:41:00' },
+        { aluno: alunoChamada(2, 'Valentina Souza', 'C', 'Escola Est. Dom Pedro II'), presenca: 'PRESENTE', dataHora: '2024-10-24T06:48:00' },
+      ],
+    },
+    {
+      id: 102,
       status: 'FINALIZADA',
       alunos: [
-        { aluno: { id: 1, nome: 'Enzo Gabriel Silva', escola: { nome: 'Colégio Anchieta' } }, presente: true },
-        { aluno: { id: 2, nome: 'Valentina Souza', escola: { nome: 'Escola Est. Dom Pedro II' } }, presente: true },
-        { aluno: { id: 3, nome: 'Thiago Oliveira', escola: { nome: 'Colégio Santa Maria' } }, presente: false },
-        { aluno: { id: 5, nome: 'Arthur Barbosa', escola: { nome: 'Colégio Anchieta' } }, presente: true },
+        { aluno: alunoChamada(1, 'Enzo Gabriel Silva', 'A', 'Colégio Anchieta'), presenca: 'PRESENTE', dataHora: '2024-10-23T06:40:00' },
+        { aluno: alunoChamada(2, 'Valentina Souza', 'C', 'Escola Est. Dom Pedro II'), presenca: 'PRESENTE', dataHora: '2024-10-23T06:47:00' },
+        { aluno: alunoChamada(3, 'Thiago Oliveira', 'A', 'Colégio Santa Maria'), presenca: 'AUSENTE', dataHora: '2024-10-23T07:02:00' },
+        { aluno: alunoChamada(5, 'Arthur Barbosa', 'B', 'Colégio Anchieta'), presenca: 'PRESENTE', dataHora: '2024-10-23T07:10:00' },
+      ],
+    },
+    {
+      id: 101,
+      status: 'CANCELADA',
+      alunos: [
+        { aluno: alunoChamada(1, 'Enzo Gabriel Silva', 'A', 'Colégio Anchieta'), presenca: 'AUSENTE', dataHora: '2024-10-22T06:39:00' },
       ],
     },
     {
       id: 100,
-      data: '2024-10-22',
       status: 'FINALIZADA',
       alunos: [
-        { aluno: { id: 1, nome: 'Enzo Gabriel Silva', escola: { nome: 'Colégio Anchieta' } }, presente: true },
-        { aluno: { id: 2, nome: 'Valentina Souza', escola: { nome: 'Escola Est. Dom Pedro II' } }, presente: true },
-        { aluno: { id: 3, nome: 'Thiago Oliveira', escola: { nome: 'Colégio Santa Maria' } }, presente: true },
-        { aluno: { id: 5, nome: 'Arthur Barbosa', escola: { nome: 'Colégio Anchieta' } }, presente: true },
+        { aluno: alunoChamada(1, 'Enzo Gabriel Silva', 'A', 'Colégio Anchieta'), presenca: 'PRESENTE', dataHora: '2024-10-21T06:42:00' },
+        { aluno: alunoChamada(2, 'Valentina Souza', 'C', 'Escola Est. Dom Pedro II'), presenca: 'PRESENTE', dataHora: '2024-10-21T06:50:00' },
+        { aluno: alunoChamada(3, 'Thiago Oliveira', 'A', 'Colégio Santa Maria'), presenca: 'PRESENTE', dataHora: '2024-10-21T07:01:00' },
+        { aluno: alunoChamada(5, 'Arthur Barbosa', 'B', 'Colégio Anchieta'), presenca: 'AUSENTE', dataHora: '2024-10-21T07:09:00' },
       ],
     },
   ],
   2: [
     {
       id: 201,
-      data: '2024-10-23',
       status: 'FINALIZADA',
       alunos: [
-        { aluno: { id: 4, nome: 'Mariana Santos', escola: { nome: 'Escola Maple Bear' } }, presente: true },
-        { aluno: { id: 6, nome: 'Beatriz Lima', escola: { nome: 'Colégio Santa Maria' } }, presente: true },
+        { aluno: alunoChamada(4, 'Mariana Santos', 'A', 'Escola Maple Bear'), presenca: 'PRESENTE', dataHora: '2024-10-23T16:40:00' },
+        { aluno: alunoChamada(6, 'Beatriz Lima', 'B', 'Colégio Santa Maria'), presenca: 'PRESENTE', dataHora: '2024-10-23T16:52:00' },
       ],
     },
   ],
+};
+
+/** Resumo retornado por POST /rotas/otimizar (distância em metros, tempo em segundos). */
+export const mockRotas = {
+  1: { distanciaTotal: 9400, tempoTotal: 2280 },
+  2: { distanciaTotal: 6100, tempoTotal: 1560 },
 };
 
 export const mockFinanceiro = {

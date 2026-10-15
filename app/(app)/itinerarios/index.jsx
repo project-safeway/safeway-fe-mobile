@@ -69,14 +69,8 @@ export default function ItinerariosScreen() {
               </View>
               <View style={styles.icons}>
                 <TouchableOpacity
-                  onPress={() => router.push(`/(app)/itinerarios/rota/${item.id}`)}
-                  accessibilityLabel="Ver rota"
-                >
-                  <Ionicons name="navigate-outline" size={18} color="#8B5CF6" />
-                </TouchableOpacity>
-                <TouchableOpacity
                   onPress={() => router.push(`/(app)/itinerarios/editar/${item.id}`)}
-                  accessibilityLabel="Ordenar / editar"
+                  accessibilityLabel="Editar"
                 >
                   <Ionicons name="create-outline" size={18} color={colors.mapBlue} />
                 </TouchableOpacity>
@@ -104,10 +98,10 @@ export default function ItinerariosScreen() {
 
             <TouchableOpacity
               style={styles.presencaBtn}
-              onPress={() => router.push(`/(app)/itinerarios/chamada/${item.id}`)}
+              onPress={() => router.push(`/(app)/itinerarios/rota/${item.id}`)}
             >
-              <Ionicons name="play-circle" size={18} color={colors.white} />
-              <Text style={styles.presencaText}>Iniciar Presença</Text>
+              <Ionicons name="navigate" size={18} color={colors.white} />
+              <Text style={styles.presencaText}>Iniciar Rota</Text>
             </TouchableOpacity>
           </Card>
         )}

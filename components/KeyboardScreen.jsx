@@ -1,9 +1,14 @@
-import { ScrollView, KeyboardAvoidingView, Platform, StyleSheet } from 'react-native';
+import { KeyboardAvoidingView, Platform, StyleSheet } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors } from '../constants/colors';
 import { useKeyboardBottomInset } from '../hooks/useKeyboardBottomInset';
 
-export function KeyboardScreen({ children, contentStyle, edges = ['top', 'bottom'] }) {
+/**
+ * @param {Object} props
+ * @param {import('react-native-reanimated').AnimatedRef<Animated.ScrollView>} [props.scrollRef]
+ */
+export function KeyboardScreen({ children, contentStyle, edges = ['top', 'bottom'], scrollRef }) {
   const keyboardInset = useKeyboardBottomInset();
 
   return (
@@ -13,7 +18,8 @@ export function KeyboardScreen({ children, contentStyle, edges = ['top', 'bottom
         behavior="padding"
         keyboardVerticalOffset={Platform.OS === 'ios' ? 8 : 0}
       >
-        <ScrollView
+        <Animated.ScrollView
+          ref={scrollRef}
           contentContainerStyle={[
             styles.content,
             contentStyle,
@@ -25,7 +31,7 @@ export function KeyboardScreen({ children, contentStyle, edges = ['top', 'bottom
           automaticallyAdjustKeyboardInsets
         >
           {children}
-        </ScrollView>
+        </Animated.ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );

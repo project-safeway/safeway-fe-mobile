@@ -11,6 +11,24 @@ export const VALIDATION_MESSAGES = {
   INVALID_CAPACITY: 'Capacidade deve ser um número entre 1 e 100',
 };
 
+export const HORARIO_OPTIONS = Array.from({ length: (22 - 5) * 4 + 1 }, (_, i) => {
+  const total = 5 * 60 + i * 15;
+  const h = String(Math.floor(total / 60)).padStart(2, '0');
+  const m = String(total % 60).padStart(2, '0');
+  return { value: `${h}:${m}`, label: `${h}:${m}` };
+});
+
+export const TIPO_VIAGEM_OPTIONS = [
+  { value: 'SO_IDA', label: 'Ida' },
+  { value: 'SO_VOLTA', label: 'Volta' },
+];
+
+export const STATUS_CHAMADA_LABELS = {
+  EM_ANDAMENTO: 'Em Andamento',
+  FINALIZADA: 'Finalizada',
+  CANCELADA: 'Cancelada',
+};
+
 export const REGEX_PATTERNS = {
   EMAIL: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
   CPF: /^\d{3}\.\d{3}\.\d{3}-\d{2}$/,
