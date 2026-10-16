@@ -1,4 +1,5 @@
 const googleMapsApiKey = process.env.GOOGLE_MAPS_API_KEY?.trim();
+const googleAndroidCertSha1 = process.env.GOOGLE_ANDROID_CERT_SHA1?.replace(/:/g, '').trim();
 
 module.exports = {
   expo: {
@@ -57,6 +58,10 @@ module.exports = {
         : []),
     ],
     extra: {
+      googleMaps: {
+        ...(googleMapsApiKey ? { apiKey: googleMapsApiKey } : {}),
+        ...(googleAndroidCertSha1 ? { androidCertSha1: googleAndroidCertSha1 } : {}),
+      },
       eas: {
         projectId: '3f6f8e0b-8311-42ad-a9bd-e2f5b78c31a9',
       },

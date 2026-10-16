@@ -14,6 +14,7 @@ import {
   mockRotas,
 } from '../../../../data/mock';
 import { buildTrajeto } from '../../../../utils/trajeto';
+import { buscarCaminhoPelasRuas } from '../../../../services/rotas';
 
 const SAO_PAULO = { latitude: -23.5613, longitude: -46.6565, latitudeDelta: 0.06, longitudeDelta: 0.06 };
 
@@ -38,14 +39,8 @@ export default function RotaScreen() {
     () => mockItinerarios.find((i) => String(i.id) === String(id)) || mockItinerarios[0],
     [id]
   );
-  const resumo = mockRotas[itinerario.id];
   const [localizacaoPermitida, setLocalizacaoPermitida] = useState(false);
-
-  useEffect(() => {
-    Location.requestForegroundPermissionsAsync().then(({ status }) => {
-      setLocalizacaoPermitida(status === 'granted');
-    });
-  }, []);
+  const [caminho, setCaminho] = useState(null);
 
   const paradas = useMemo(
     () =>
@@ -59,7 +54,47 @@ export default function RotaScreen() {
       }),
     [itinerario]
   );
-  const pontosMapa = paradas.filter((p) => p.coordenada);
+  const pontosMapa = useMemo(() => paradas.filter((p) => p.coordenada), [paradas]);
+
+  const resumo = caminho
+    ? { distanciaTotal: caminho.distanciaMetros, tempoTotal: caminho.duracaoSegundos }
+    : mockRotas[itinerario.id];
+
+  useEffect(() => {
+    let ativo = true;
+
+    (async () => {
+      let origem = null;
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        const permitido = status === 'granted';
+        if (ativo) setLocalizacaoPermitida(permitido);
+        if (permitido) {
+          const posicao =
+            (await Location.getLastKnownPositionAsync()) ??
+            (await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }));
+          if (posicao) origem = { latitude: posicao.coords.latitude, longitude: posicao.coords.longitude };
+        }
+      } catch (error) {
+        console.warn('[rota] localização indisponível:', error.message);
+      }
+
+      const pontos = pontosMapa.map((p) => p.coordenada);
+      if (origem) pontos.unshift(origem);
+      if (pontos.length < 2) return;
+
+      try {
+        const resultado = await buscarCaminhoPelasRuas(pontos);
+        if (ativo) setCaminho(resultado);
+      } catch (error) {
+        console.warn('[rota] caminho pelas ruas indisponível:', error.message);
+      }
+    })();
+
+    return () => {
+      ativo = false;
+    };
+  }, [pontosMapa]);
 
   const [presencas, setPresencas] = useState(() =>
     Object.fromEntries(paradas.filter((p) => p.tipo === 'aluno').map((p) => [p.id, false]))
@@ -67,13 +102,19 @@ export default function RotaScreen() {
   const totalAlunos = Object.keys(presencas).length;
   const totalPresentes = Object.values(presencas).filter(Boolean).length;
 
-  const enquadrarMapa = () => {
-    if (pontosMapa.length < 2) return;
-    mapRef.current?.fitToCoordinates(
-      pontosMapa.map((p) => p.coordenada),
-      { edgePadding: { top: 40, right: 40, bottom: 40, left: 40 }, animated: false }
-    );
+  const linhaRota = caminho?.coordenadas ?? pontosMapa.map((p) => p.coordenada);
+
+  const enquadrarMapa = (animated = false) => {
+    if (linhaRota.length < 2) return;
+    mapRef.current?.fitToCoordinates(linhaRota, {
+      edgePadding: { top: 40, right: 40, bottom: 40, left: 40 },
+      animated,
+    });
   };
+
+  useEffect(() => {
+    if (caminho) enquadrarMapa(true);
+  }, [caminho]);
 
   const finalizar = () => {
     const payload = Object.fromEntries(
@@ -156,16 +197,17 @@ export default function RotaScreen() {
           ref={mapRef}
           style={StyleSheet.absoluteFill}
           initialRegion={pontosMapa[0] ? { ...SAO_PAULO, ...pontosMapa[0].coordenada } : SAO_PAULO}
-          onMapReady={enquadrarMapa}
+          onMapReady={() => enquadrarMapa()}
           toolbarEnabled={false}
           showsUserLocation={localizacaoPermitida}
           showsMyLocationButton={localizacaoPermitida}
         >
-          {pontosMapa.length > 1 ? (
+          {linhaRota.length > 1 ? (
             <Polyline
-              coordinates={pontosMapa.map((p) => p.coordenada)}
+              coordinates={linhaRota}
               strokeColor={colors.primary}
               strokeWidth={4}
+              lineDashPattern={caminho ? undefined : [8, 6]}
             />
           ) : null}
           {pontosMapa.map((p) => {
