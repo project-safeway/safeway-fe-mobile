@@ -15,6 +15,7 @@ import {
 } from '../../../../data/mock';
 import { buildTrajeto } from '../../../../utils/trajeto';
 import { buscarCaminhoPelasRuas } from '../../../../services/rotas';
+import { useChamada } from '../../../../contexts/ChamadaContext';
 
 const SAO_PAULO = { latitude: -23.5613, longitude: -46.6565, latitudeDelta: 0.06, longitudeDelta: 0.06 };
 
@@ -96,10 +97,14 @@ export default function RotaScreen() {
     };
   }, [pontosMapa]);
 
-  const [presencas, setPresencas] = useState(() =>
-    Object.fromEntries(paradas.filter((p) => p.tipo === 'aluno').map((p) => [p.id, false]))
-  );
-  const totalAlunos = Object.keys(presencas).length;
+  const { chamada, iniciarChamada, marcarPresenca, encerrarChamada } = useChamada();
+
+  useEffect(() => {
+    iniciarChamada(itinerario);
+  }, [itinerario, iniciarChamada]);
+
+  const presencas = chamada?.itinerarioId === itinerario.id ? chamada.presencas : {};
+  const totalAlunos = paradas.filter((p) => p.tipo === 'aluno').length;
   const totalPresentes = Object.values(presencas).filter(Boolean).length;
 
   const linhaRota = caminho?.coordenadas ?? pontosMapa.map((p) => p.coordenada);
@@ -129,6 +134,7 @@ export default function RotaScreen() {
           text: 'Sim, finalizar',
           onPress: () => {
             console.log('[mock] registrarPresenca', payload, '→ FINALIZADA');
+            encerrarChamada();
             Alert.alert('Chamada finalizada', 'Presenças registradas com sucesso!', [
               { text: 'OK', onPress: () => router.back() },
             ]);
@@ -146,6 +152,7 @@ export default function RotaScreen() {
         style: 'destructive',
         onPress: () => {
           console.log('[mock] alterarStatusChamada → CANCELADA');
+          encerrarChamada();
           router.back();
         },
       },
@@ -154,7 +161,7 @@ export default function RotaScreen() {
 
   const renderParada = ({ item, index }) => {
     const isEscola = item.tipo === 'escola';
-    const presente = presencas[item.id];
+    const presente = Boolean(presencas[item.id]);
     return (
       <View style={[styles.parada, isEscola && styles.paradaEscola]}>
         <View style={[styles.ordem, isEscola ? styles.ordemEscola : styles.ordemAluno]}>
@@ -179,7 +186,7 @@ export default function RotaScreen() {
             </Text>
             <Switch
               value={presente}
-              onValueChange={(v) => setPresencas((prev) => ({ ...prev, [item.id]: v }))}
+              onValueChange={(v) => marcarPresenca(item.id, v)}
               trackColor={{ false: colors.border, true: colors.successAlt }}
               thumbColor={colors.white}
               accessibilityLabel={`Presença de ${item.nome}`}

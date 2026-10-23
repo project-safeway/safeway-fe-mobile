@@ -1,6 +1,6 @@
 # SafeWay Mobile
 
-Aplicativo mobile do SafeWay para o motorista de transporte escolar, feito com **Expo SDK 57** (React Native 0.86 + Expo Router). Segue as funcionalidades do front-end web (alunos e escolas, itinerários, chamada com rota no mapa e financeiro) e, por enquanto, funciona **só com dados mockados** (`data/mock.js`). Nenhuma tela chama o back-end ainda.
+Aplicativo mobile do SafeWay para o motorista de transporte escolar, feito com **Expo SDK 57** (React Native 0.86 + Expo Router). Segue as funcionalidades do front-end web (alunos e escolas, itinerários, chamada com rota no mapa e financeiro), tem um **assistente por voz** e, por enquanto, funciona **só com dados mockados** (`data/mock.js`). Nenhuma tela chama o back-end ainda.
 
 ## Sumário
 
@@ -11,6 +11,7 @@ Aplicativo mobile do SafeWay para o motorista de transporte escolar, feito com *
 - [4. Rodar com development build (EAS)](#4-rodar-com-development-build-eas)
 - [5. Rodar localmente com Android Studio (opcional)](#5-rodar-localmente-com-android-studio-opcional)
 - [Quando gerar um APK novo](#quando-gerar-um-apk-novo)
+- [Assistente por voz (IA)](#assistente-por-voz-ia)
 - [Estrutura do projeto](#estrutura-do-projeto)
 - [Problemas comuns](#problemas-comuns)
 
@@ -51,12 +52,14 @@ cp .env.example .env
 ```env
 GOOGLE_MAPS_API_KEY=sua_chave_aqui
 GOOGLE_ANDROID_CERT_SHA1=AA:BB:CC:...
+IA_API_URL=
 ```
 
 | Variável | Para que serve |
 | --- | --- |
 | `GOOGLE_MAPS_API_KEY` | Mostra o mapa (Maps SDK for Android) e calcula o caminho pelas ruas na tela de rota (Routes API). |
 | `GOOGLE_ANDROID_CERT_SHA1` | SHA-1 da assinatura do app. A Routes API exige esse valor quando a chave é restrita a apps Android. Aceita com ou sem `:`. |
+| `IA_API_URL` | Endereço da API Python do assistente, por exemplo `http://192.168.0.10:8000`. Vazio: o assistente responde com o mock do próprio app. |
 
 O `.env` está no `.gitignore`. **Nunca faça commit da chave.**
 
@@ -176,6 +179,32 @@ cd android && ./gradlew signingReport
 
 Se você esquecer, o app costuma mostrar um erro do tipo `Cannot find native module ...`.
 
+## Assistente por voz (IA)
+
+A aba **Assistente** deixa o motorista falar ou digitar pedidos como "o Enzo entrou na van", "a Valentina faltou", "quem ainda falta embarcar?" ou "como está meu financeiro este mês?".
+
+- **Fala para texto:** feita no próprio celular com [`expo-speech-recognition`](https://github.com/jamsch/expo-speech-recognition), que usa o reconhecimento de voz do Android (o mesmo do teclado do Google). É gratuito e não precisa de chave. Precisa de internet e só funciona no development build; no Expo Go o microfone fica indisponível.
+- **Presença:** só pode ser marcada com uma rota em andamento (aba Itinerário → **Iniciar Rota**). A chamada é compartilhada entre a tela da rota e o assistente, e cada marcação feita pela IA pode ser desfeita.
+- **Respostas:** com `IA_API_URL` vazio, `services/iaMock.js` responde com regras simples sobre os dados mockados. Com a URL preenchida, o app chama a API Python.
+
+Contrato esperado da API Python (`POST {IA_API_URL}/ia/mensagens`):
+
+```json
+{ "conversaId": null, "texto": "o Enzo entrou na van", "itinerarioId": 1 }
+```
+
+```json
+{
+  "conversaId": "abc123",
+  "resposta": "Pronto, marquei o Enzo como presente.",
+  "acoes": [{ "tipo": "MARCAR_PRESENCA", "alunoId": 1, "nomeAluno": "Enzo Gabriel Silva", "status": "PRESENTE" }]
+}
+```
+
+- `conversaId` vem `null` na primeira mensagem; a API cria a conversa, guarda o texto no histórico e devolve o id, que o app reenvia nas próximas mensagens.
+- `itinerarioId` é o da rota em andamento, ou `null` se não houver.
+- `acoes` lista o que a API já gravou no banco; o app só atualiza a tela.
+
 ## Estrutura do projeto
 
 ```
@@ -187,9 +216,11 @@ app/                     Telas (Expo Router: cada arquivo é uma rota)
     alunos/              Lista por escola, detalhe, cadastro de aluno e de escola, edição de escola
     itinerarios/         Lista, cadastro, edição (arrastar para ordenar), histórico, rota + chamada
     financeiro/          Painel com gráficos, mensalidades, despesas e formulário de despesa
+    assistente.jsx       Conversa com a IA por voz ou texto
 components/              Componentes reutilizáveis (Input, Select, Button, Card, gráficos...)
-contexts/                Estado compartilhado (FinanceiroContext)
-services/                Integrações externas (Routes API do Google)
+contexts/                Estado compartilhado (FinanceiroContext, ChamadaContext)
+hooks/                   Teclado e transcrição de voz (useTranscricao)
+services/                Integrações externas (Routes API do Google, API da IA e o mock dela)
 data/mock.js             Todos os dados mockados, no formato que a API devolve
 utils/                   Formatadores, máscaras, validações e regras de negócio
 constants/colors.js      Paleta de cores
@@ -212,6 +243,10 @@ O SHA-1 ou o pacote `com.safeway.mobile` não está na restrição da chave.
 A Routes API falhou. O motivo aparece no terminal do Metro, em `[rota] caminho pelas ruas indisponível: ...`:
 - `API_KEY_ANDROID_APP_BLOCKED`: o `GOOGLE_ANDROID_CERT_SHA1` está vazio ou errado.
 - `The caller does not have permission`: a Routes API não está ativada ou o projeto está sem faturamento.
+
+**O microfone do assistente não funciona**
+- "Só funciona no app instalado pelo development build": você está no Expo Go ou num APK gerado antes da instalação do `expo-speech-recognition`. Gere um APK novo.
+- "Reconhecimento de voz indisponível": instale ou ative o app **Google** / **Serviços de fala do Google** no celular.
 
 **Mudei o `.env` e nada aconteceu**
 Pare o `npx expo start` e rode de novo. O `.env` só é lido quando o servidor inicia.

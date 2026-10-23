@@ -1,5 +1,6 @@
 const googleMapsApiKey = process.env.GOOGLE_MAPS_API_KEY?.trim();
 const googleAndroidCertSha1 = process.env.GOOGLE_ANDROID_CERT_SHA1?.replace(/:/g, '').trim();
+const iaApiUrl = process.env.IA_API_URL?.trim().replace(/\/+$/, '');
 
 module.exports = {
   expo: {
@@ -53,6 +54,15 @@ module.exports = {
             'O SafeWay usa sua localização para mostrar a van no mapa durante a rota.',
         },
       ],
+      [
+        'expo-speech-recognition',
+        {
+          microphonePermission:
+            'O SafeWay usa o microfone para você falar com o assistente durante a rota.',
+          speechRecognitionPermission:
+            'O SafeWay transforma sua fala em texto para o assistente entender o pedido.',
+        },
+      ],
       ...(googleMapsApiKey
         ? [['react-native-maps', { androidGoogleMapsApiKey: googleMapsApiKey }]]
         : []),
@@ -61,6 +71,9 @@ module.exports = {
       googleMaps: {
         ...(googleMapsApiKey ? { apiKey: googleMapsApiKey } : {}),
         ...(googleAndroidCertSha1 ? { androidCertSha1: googleAndroidCertSha1 } : {}),
+      },
+      ia: {
+        ...(iaApiUrl ? { apiUrl: iaApiUrl } : {}),
       },
       eas: {
         projectId: '3f6f8e0b-8311-42ad-a9bd-e2f5b78c31a9',
