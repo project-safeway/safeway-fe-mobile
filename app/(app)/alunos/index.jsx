@@ -18,9 +18,7 @@ import { mockEscolasComAlunos } from '../../../data/mock';
 
 export default function ListaAlunosScreen() {
   const [busca, setBusca] = useState('');
-  const [aberto, setAberto] = useState(() =>
-    Object.fromEntries(mockEscolasComAlunos.map((item) => [item.escola.id, true]))
-  );
+  const [aberto, setAberto] = useState({});
   const [escolas, setEscolas] = useState(mockEscolasComAlunos);
 
   const filtrar = (alunos) => {
@@ -108,28 +106,41 @@ export default function ListaAlunosScreen() {
         }
         renderItem={({ item }) => {
           const { escola, alunos } = item;
-          const isOpen = !!aberto[escola.id];
           const filtrados = filtrar(alunos);
+          const isOpen = !!aberto[escola.id] || (!!busca.trim() && filtrados.length > 0);
+          const alternar = () => setAberto((p) => ({ ...p, [escola.id]: !isOpen }));
 
           return (
             <Card style={styles.schoolCard}>
-              <View style={styles.schoolHead}>
-                <View style={styles.schoolInfo}>
+              <View style={[styles.schoolHead, !isOpen && styles.schoolHeadClosed]}>
+                <TouchableOpacity style={styles.schoolInfo} onPress={alternar} activeOpacity={0.7}>
                   <Text style={styles.schoolName}>{escola.nome}</Text>
                   <Text style={styles.schoolAddr}>
                     {escola.endereco?.logradouro || escola.endereco?.cidade || 'Endereço não informado'}
                   </Text>
-                </View>
+                  <Text style={styles.schoolCount}>
+                    {alunos.length} {alunos.length === 1 ? 'aluno' : 'alunos'}
+                  </Text>
+                </TouchableOpacity>
                 <View style={styles.schoolActions}>
                   <TouchableOpacity
                     style={styles.iconBtn}
+                    onPress={() => router.push(`/(app)/alunos/escola-editar/${escola.id}`)}
+                    accessibilityLabel={`Editar escola ${escola.nome}`}
+                  >
+                    <Ionicons name="create-outline" size={18} color={colors.textSecondary} />
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.iconBtn}
                     onPress={() => deleteEscola(escola.id, escola.nome, alunos)}
+                    accessibilityLabel={`Excluir escola ${escola.nome}`}
                   >
                     <Ionicons name="trash-outline" size={18} color={colors.textSecondary} />
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={styles.iconBtn}
-                    onPress={() => setAberto((p) => ({ ...p, [escola.id]: !p[escola.id] }))}
+                    onPress={alternar}
+                    accessibilityLabel={isOpen ? 'Recolher alunos' : 'Mostrar alunos'}
                   >
                     <Ionicons
                       name={isOpen ? 'chevron-up' : 'chevron-down'}
@@ -233,9 +244,11 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: colors.borderLight,
   },
+  schoolHeadClosed: { borderBottomWidth: 0 },
   schoolInfo: { flex: 1, marginRight: 8 },
   schoolName: { fontSize: 16, fontWeight: '700', color: colors.text },
   schoolAddr: { marginTop: 2, fontSize: 13, color: colors.textMuted },
+  schoolCount: { marginTop: 4, fontSize: 12, fontWeight: '600', color: colors.primary },
   schoolActions: { flexDirection: 'row', gap: 4 },
   iconBtn: { padding: 8 },
   alunosWrap: { padding: 12, gap: 8 },

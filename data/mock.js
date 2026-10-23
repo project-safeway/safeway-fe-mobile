@@ -451,19 +451,56 @@ export const mockRotas = {
   2: { distanciaTotal: 6100, tempoTotal: 1560 },
 };
 
-export const mockFinanceiro = {
-  receitaTotal: 4850,
-  despesasTotal: 1620,
-  saldoMensal: 3230,
-  mensalidades: [
-    { id: 1, name: 'Mariana Silva (Enzo)', amount: 450, status: 'pago' },
-    { id: 2, name: 'Carlos Souza (Valentina)', amount: 450, status: 'pago' },
-    { id: 3, name: 'Ana Oliveira (Thiago)', amount: 480, status: 'pendente' },
-    { id: 4, name: 'Roberto Santos (Mariana)', amount: 520, status: 'pago' },
-  ],
-  despesas: [
-    { id: 1, description: 'Combustível (Van)', date: 'Pago em 22/10', amount: 680 },
-    { id: 2, description: 'Manutenção preventiva', date: 'Pago em 18/10', amount: 420 },
-    { id: 3, description: 'Seguro mensal', date: 'Pago em 10/10', amount: 320 },
-  ],
-};
+const HOJE = new Date();
+
+function dataISO(offsetMeses, dia) {
+  const data = new Date(HOJE.getFullYear(), HOJE.getMonth() - offsetMeses, Math.min(dia, 28));
+  const mes = String(data.getMonth() + 1).padStart(2, '0');
+  return `${data.getFullYear()}-${mes}-${String(data.getDate()).padStart(2, '0')}`;
+}
+
+/** Meses atrás em que cada aluno passou a usar a van (receita cresce ao longo do semestre). */
+const INICIO_ALUNO = { 1: 5, 2: 5, 3: 5, 4: 4, 5: 2, 6: 1 };
+const STATUS_MES_ATUAL = { 1: 'PAGO', 2: 'PENDENTE', 3: 'PAGO', 4: 'PAGO', 5: 'PAGO', 6: 'ATRASADO' };
+
+/** Formato de GET /api/v1/mensalidades (MensalidadeResponse). */
+export const mockMensalidades = [5, 4, 3, 2, 1, 0]
+  .flatMap((offset) =>
+    Object.values(mockAlunosDetalhe)
+      .filter((aluno) => INICIO_ALUNO[aluno.id] >= offset)
+      .map((aluno) => {
+        const status = offset === 0 ? STATUS_MES_ATUAL[aluno.id] : 'PAGO';
+        const dataVencimento = dataISO(offset, aluno.diaVencimento);
+        return {
+          alunoId: aluno.id,
+          nomeAluno: aluno.nome,
+          dataVencimento,
+          valorMensalidade: aluno.valorPadraoMensalidade,
+          status,
+          dataPagamento: status === 'PAGO' ? dataVencimento : null,
+          valorPago: status === 'PAGO' ? aluno.valorPadraoMensalidade : null,
+        };
+      })
+  )
+  .map((mensalidade, index) => ({ id: index + 1, ...mensalidade }));
+
+/** Valores do mais antigo (5 meses atrás) ao mês atual; 0 = sem lançamento no mês. */
+const DESPESAS_MENSAIS = [
+  { descricao: 'Estacionamento mensal', dia: 3, valores: [150, 150, 160, 160, 170, 170] },
+  { descricao: 'Lavagem da Van', dia: 5, valores: [60, 0, 70, 60, 0, 0] },
+  { descricao: 'Seguro Escolar Mês', dia: 10, valores: [260, 260, 260, 260, 260, 260] },
+  { descricao: 'Revisão de freios', dia: 14, valores: [0, 0, 280, 0, 0, 0] },
+  { descricao: 'Troca de Óleo', dia: 18, valores: [0, 180, 0, 0, 190, 180] },
+  { descricao: 'Combustível (Van)', dia: 22, valores: [420, 450, 410, 480, 460, 470] },
+];
+
+/** Formato de GET /api/v1/pagamentos (PagamentoResponse). */
+export const mockPagamentos = [5, 4, 3, 2, 1, 0]
+  .flatMap((offset) =>
+    DESPESAS_MENSAIS.filter((d) => d.valores[5 - offset] > 0).map((d) => ({
+      dataPagamento: dataISO(offset, offset === 0 ? Math.min(d.dia, HOJE.getDate()) : d.dia),
+      valorPagamento: d.valores[5 - offset],
+      descricao: d.descricao,
+    }))
+  )
+  .map((pagamento, index) => ({ id: index + 1, ...pagamento }));

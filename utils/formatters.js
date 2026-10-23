@@ -74,6 +74,37 @@ export function maskDate(value) {
   return parts.join('/');
 }
 
+/** Formata enquanto digita: "68050" -> "680,50". */
+export function maskMoney(value) {
+  const digits = String(value ?? '').replace(/\D/g, '').replace(/^0+/, '').slice(0, 9);
+  if (!digits) return '';
+  const cents = digits.padStart(3, '0');
+  const inteiro = cents.slice(0, -2).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  return `${inteiro},${cents.slice(-2)}`;
+}
+
+/** "1.234,56" -> 1234.56 */
+export function parseMoney(value) {
+  const digits = String(value ?? '').replace(/\D/g, '');
+  return digits ? Number(digits) / 100 : NaN;
+}
+
+/** "2026-10-22" -> "22/10/2026" */
+export function isoToBR(iso) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso || '');
+  return match ? `${match[3]}/${match[2]}/${match[1]}` : '';
+}
+
+/** "22/10/2026" -> "2026-10-22" (null se a data for inválida) */
+export function brToISO(valor) {
+  const match = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(valor || '');
+  if (!match) return null;
+  const [, d, m, a] = match;
+  const data = new Date(Number(a), Number(m) - 1, Number(d));
+  if (data.getDate() !== Number(d) || data.getMonth() !== Number(m) - 1) return null;
+  return `${a}-${m}-${d}`;
+}
+
 export function formatDate(date) {
   try {
     const dateObj = date instanceof Date ? date : new Date(date);

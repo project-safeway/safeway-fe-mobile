@@ -23,4 +23,6 @@ export const colors = {
   mapBlue: '#4A90D9',
   chartBrown: '#5C4033',
   chartPeach: '#F5C6A0',
+  chartLight: '#FBE3D6',
+  chartGrid: '#F3ECE4',
 };
