@@ -1,15 +1,18 @@
-import { useState } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { BackHeader } from '../../../components/BackHeader';
 import { Card } from '../../../components/Card';
+import { EstadoCarregamento } from '../../../components/EstadoCarregamento';
 import { colors } from '../../../constants/colors';
-import { mockItinerarios } from '../../../data/mock';
+import { useCarregar } from '../../../hooks/useCarregar';
+import { excluirItinerario, listarItinerarios } from '../../../services/itinerarios';
+import { horaCurta } from '../../../utils/formatters';
+import { TIPO_VIAGEM_LABELS } from '../../../utils/constants';
 
 export default function ItinerariosScreen() {
-  const [lista, setLista] = useState(mockItinerarios);
+  const { dados: lista, setDados: setLista, erro, recarregar } = useCarregar(listarItinerarios);
 
   const excluir = (id, nome) => {
     Alert.alert('Excluir itinerário', `Excluir "${nome}"?`, [
@@ -17,7 +20,14 @@ export default function ItinerariosScreen() {
       {
         text: 'Excluir',
         style: 'destructive',
-        onPress: () => setLista((prev) => prev.filter((i) => i.id !== id)),
+        onPress: async () => {
+          try {
+            await excluirItinerario(id);
+            setLista((prev) => prev.filter((i) => i.id !== id));
+          } catch (e) {
+            Alert.alert('Não foi possível excluir', e.message);
+          }
+        },
       },
     ]);
   };
@@ -25,7 +35,7 @@ export default function ItinerariosScreen() {
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <FlatList
-        data={lista}
+        data={lista ?? []}
         keyExtractor={(item) => String(item.id)}
         contentContainerStyle={styles.content}
         ListHeaderComponent={
@@ -44,26 +54,30 @@ export default function ItinerariosScreen() {
           </>
         }
         ListEmptyComponent={
-          <Text style={styles.empty}>Nenhum itinerário cadastrado.</Text>
+          lista ? (
+            <Text style={styles.empty}>Nenhum itinerário cadastrado.</Text>
+          ) : (
+            <EstadoCarregamento erro={erro} onTentarNovamente={recarregar} />
+          )
         }
         renderItem={({ item }) => (
           <Card style={styles.card}>
             <View style={styles.head}>
               <View style={styles.headText}>
-                <Text style={styles.name}>{item.nome}</Text>
+                <Text style={styles.name}>{item.name}</Text>
                 <View
                   style={[
                     styles.badge,
-                    item.tipoViagem === 'SO_IDA' ? styles.badgeIda : styles.badgeVolta,
+                    item.routeType === 'TO_SCHOOL' ? styles.badgeIda : styles.badgeVolta,
                   ]}
                 >
                   <Text
                     style={[
                       styles.badgeText,
-                      item.tipoViagem === 'SO_IDA' ? styles.badgeTextIda : styles.badgeTextVolta,
+                      item.routeType === 'TO_SCHOOL' ? styles.badgeTextIda : styles.badgeTextVolta,
                     ]}
                   >
-                    {item.tipoViagem === 'SO_IDA' ? 'Ida' : 'Volta'}
+                    {TIPO_VIAGEM_LABELS[item.routeType] ?? item.routeType}
                   </Text>
                 </View>
               </View>
@@ -75,7 +89,7 @@ export default function ItinerariosScreen() {
                   <Ionicons name="create-outline" size={18} color={colors.mapBlue} />
                 </TouchableOpacity>
                 <TouchableOpacity
-                  onPress={() => excluir(item.id, item.nome)}
+                  onPress={() => excluir(item.id, item.name)}
                   accessibilityLabel="Excluir"
                 >
                   <Ionicons name="trash-outline" size={18} color={colors.error} />
@@ -92,7 +106,7 @@ export default function ItinerariosScreen() {
             <View style={styles.horario}>
               <Ionicons name="time-outline" size={16} color={colors.textSecondary} />
               <Text style={styles.horarioText}>
-                {item.horarioInicio} - {item.horarioFim}
+                {horaCurta(item.startTime) || '--:--'} - {horaCurta(item.endTime) || '--:--'}
               </Text>
             </View>
 

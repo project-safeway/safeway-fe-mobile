@@ -38,10 +38,9 @@ export default function DespesaFormScreen() {
 
     const body = { dataPagamento, valorPagamento, descricao: descricao.trim() };
     setLoading(true);
-    if (editando) await atualizarPagamento(editando.id, body);
-    else await criarPagamento(body);
+    const salvo = editando ? await atualizarPagamento(editando.id, body) : await criarPagamento(body);
     setLoading(false);
-    router.back();
+    if (salvo) router.back();
   };
 
   return (

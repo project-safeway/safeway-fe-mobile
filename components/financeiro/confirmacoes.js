@@ -42,8 +42,7 @@ export function confirmarExclusaoPagamento(pagamento, excluir, onExcluido) {
         text: 'Sim, excluir',
         style: 'destructive',
         onPress: async () => {
-          await excluir(pagamento.id);
-          onExcluido?.();
+          if (await excluir(pagamento.id)) onExcluido?.();
         },
       },
     ]

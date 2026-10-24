@@ -19,6 +19,7 @@ import { colors } from '../constants/colors';
 import { validateRegisterForm, validatePassword, isValidPhone, validatePlaca } from '../utils/validators';
 import { maskPhone, maskPlaca } from '../utils/formatters';
 import { useKeyboardBottomInset } from '../hooks/useKeyboardBottomInset';
+import { cadastrar } from '../services/auth';
 
 export default function RegisterScreen() {
   const scrollRef = useRef(null);
@@ -103,18 +104,32 @@ export default function RegisterScreen() {
     }
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     const result = validateRegisterForm(form);
     setErrors(result.errors);
     if (!result.isValid) return;
 
     setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
-      Alert.alert('Conta criada', 'Cadastro mockado com sucesso!', [
+    try {
+      await cadastrar({
+        name: form.nome.trim(),
+        email: form.email.trim(),
+        password: form.senha,
+        phoneNumber: form.telefone.replace(/\D/g, ''),
+        transport: {
+          licensePlate: form.placa.replace(/[^A-Za-z0-9]/g, '').toUpperCase(),
+          model: form.modelo.trim(),
+          capacity: Number(form.capacidade),
+        },
+      });
+      Alert.alert('Conta criada', 'Cadastro realizado com sucesso! Entre com seu e-mail e senha.', [
         { text: 'Entrar', onPress: () => router.replace('/login') },
       ]);
-    }, 700);
+    } catch (erro) {
+      Alert.alert('Não foi possível cadastrar', erro.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (

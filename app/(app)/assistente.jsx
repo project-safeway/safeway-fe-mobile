@@ -41,7 +41,7 @@ export default function AssistenteScreen() {
 
   const totalPresentes = chamada ? Object.values(chamada.presencas).filter(Boolean).length : 0;
 
-  /** A API já gravou no banco; aqui só refletimos na chamada aberta, guardando o valor anterior para desfazer. */
+  /** Aplica na chamada aberta (marcarPresenca também grava no core), guardando o valor anterior para desfazer. */
   const aplicarAcoes = (acoes) => {
     const chamadaAtual = contextoRef.current.chamada;
     if (!chamadaAtual) return [];
@@ -100,10 +100,6 @@ export default function AssistenteScreen() {
   };
 
   const desfazer = (mensagem) => {
-    console.log(
-      '[mock] desfazer presenças',
-      mensagem.acoes.map((a) => ({ alunoId: a.alunoId, status: a.anterior ? 'PRESENTE' : 'AUSENTE' }))
-    );
     mensagem.acoes.forEach((a) => marcarPresenca(a.alunoId, a.anterior));
     setMensagens((prev) => prev.map((m) => (m.id === mensagem.id ? { ...m, desfeito: true } : m)));
   };

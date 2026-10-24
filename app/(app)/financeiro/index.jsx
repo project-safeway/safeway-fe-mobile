@@ -1,10 +1,11 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { ScreenHeader } from '../../../components/ScreenHeader';
 import { Card } from '../../../components/Card';
+import { EstadoCarregamento } from '../../../components/EstadoCarregamento';
 import { BarChart } from '../../../components/charts/BarChart';
 import { DonutChart } from '../../../components/charts/DonutChart';
 import { StatusBadge } from '../../../components/financeiro/StatusBadge';
@@ -29,7 +30,21 @@ const formatarInteiro = (valor) =>
   `R$ ${Math.round(valor).toLocaleString('pt-BR')}`;
 
 export default function FinanceiroScreen() {
-  const { mensalidades, pagamentos, pagarMensalidade, cancelarMensalidade, nomeResponsavel } = useFinanceiro();
+  const {
+    mensalidades,
+    pagamentos,
+    carregado,
+    erro,
+    recarregar,
+    pagarMensalidade,
+    cancelarMensalidade,
+    nomeResponsavel,
+  } = useFinanceiro();
+  useFocusEffect(
+    useCallback(() => {
+      recarregar();
+    }, [recarregar])
+  );
   const [mesSelecionado, setMesSelecionado] = useState(null);
   const periodo = useMemo(() => periodoAtalho('mes'), []);
 
@@ -59,13 +74,24 @@ export default function FinanceiroScreen() {
   const despesasRecentes = useMemo(
     () =>
       [...pagamentos]
-        .sort((a, b) => b.dataPagamento.localeCompare(a.dataPagamento) || b.id - a.id)
+        .sort((a, b) => b.dataPagamento.localeCompare(a.dataPagamento))
         .slice(0, ITENS_RESUMO),
     [pagamentos]
   );
 
   const mesDetalhe = serie.find((s) => s.key === mesSelecionado);
   const saldoPositivo = resumo.saldo >= 0;
+
+  if (!carregado) {
+    return (
+      <SafeAreaView style={styles.safe} edges={['top']}>
+        <View style={styles.content}>
+          <ScreenHeader eyebrow="Fluxo de Caixa" title="Controle Financeiro" />
+          <EstadoCarregamento erro={erro} onTentarNovamente={recarregar} />
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>

@@ -7,30 +7,33 @@ import { maskCEP } from '../utils/formatters';
 import { isRequired } from '../utils/validators';
 
 export const NIVEIS_ENSINO = [
-  { value: 'CRECHE', label: 'Creche' },
-  { value: 'PRE_ESCOLA', label: 'Pré-escola' },
-  { value: 'ENSINO_FUNDAMENTAL', label: 'Ensino Fundamental' },
-  { value: 'ENSINO_MEDIO', label: 'Ensino Médio' },
+  { value: 'DAYCARE_CENTER', label: 'Creche' },
+  { value: 'KINDERGARTEN', label: 'Pré-escola' },
+  { value: 'MIDDLE_SCHOOL', label: 'Ensino Fundamental' },
+  { value: 'HIGH_SCHOOL', label: 'Ensino Médio' },
 ];
-
-const ENDERECO_VAZIO = { cep: '', logradouro: '', numero: '', complemento: '', bairro: '', cidade: '', uf: '' };
 
 /**
  * Formulário de escola (cadastro e edição), com o payload no formato da API.
  * @param {Object} props
- * @param {{ nome?: string, nivelEnsino?: string, endereco?: object }} [props.initialValues]
+ * @param {{ name?: string, educationLevel?: string, address?: object }} [props.initialValues] SchoolResponse
  * @param {string} props.submitLabel
  * @param {(payload: object) => Promise<void> | void} props.onSubmit
  * @param {() => void} [props.onCancel] exibe o botão Cancelar ao lado do envio
  */
 export function EscolaForm({ initialValues, submitLabel, onSubmit, onCancel }) {
-  const [nome, setNome] = useState(initialValues?.nome ?? '');
-  const [nivelEnsino, setNivelEnsino] = useState(initialValues?.nivelEnsino ?? '');
+  const [nome, setNome] = useState(initialValues?.name ?? '');
+  const [nivelEnsino, setNivelEnsino] = useState(initialValues?.educationLevel ?? '');
   const [endereco, setEndereco] = useState(() => {
-    const inicial = { ...ENDERECO_VAZIO, ...initialValues?.endereco };
+    const address = initialValues?.address ?? {};
     return {
-      ...Object.fromEntries(Object.keys(ENDERECO_VAZIO).map((k) => [k, inicial[k] ?? ''])),
-      cep: maskCEP(String(inicial.cep ?? '')),
+      cep: maskCEP(String(address.zipCode ?? '')),
+      logradouro: address.street ?? '',
+      numero: address.number ?? '',
+      complemento: address.additionalDetails ?? '',
+      bairro: address.neighborhood ?? '',
+      cidade: address.city ?? '',
+      uf: address.federalUnit ?? '',
     };
   });
   const [errors, setErrors] = useState({});
@@ -54,16 +57,18 @@ export function EscolaForm({ initialValues, submitLabel, onSubmit, onCancel }) {
     setLoading(true);
     try {
       await onSubmit({
-        nome: nome.trim(),
-        nivelEnsino,
-        endereco: {
-          logradouro: endereco.logradouro,
-          numero: endereco.numero,
-          complemento: endereco.complemento || null,
-          bairro: endereco.bairro,
-          cidade: endereco.cidade,
-          uf: endereco.uf,
-          cep: endereco.cep.replace(/\D/g, ''),
+        name: nome.trim(),
+        educationLevel: nivelEnsino,
+        address: {
+          street: endereco.logradouro.trim(),
+          number: endereco.numero.trim(),
+          additionalDetails: endereco.complemento.trim() || null,
+          neighborhood: endereco.bairro.trim(),
+          city: endereco.cidade.trim(),
+          federalUnit: endereco.uf,
+          zipCode: endereco.cep.replace(/\D/g, ''),
+          type: 'School',
+          principal: true,
         },
       });
     } finally {

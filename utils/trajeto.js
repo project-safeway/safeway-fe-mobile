@@ -1,40 +1,37 @@
 /**
- * Junta alunos e escolas de um itinerário numa lista única ordenada,
- * mesma regra do web: ordemGlobal, senão ordemEmbarque/ordemVisita.
+ * Converte as paradas de GET /routes/{id}/stops (já ordenadas pela API)
+ * na lista usada pelas telas de edição e de rota.
  */
-export function buildTrajeto(itinerario) {
-  const alunos = (itinerario?.alunos || []).map((a) => ({
-    key: `aluno-${a.alunoId}`,
-    id: a.alunoId,
-    tipo: 'aluno',
-    nome: a.nomeAluno,
-    escola: a.nomeEscola,
-    responsavel: a.nomeResponsavel,
-    ordemGlobal: a.ordemGlobal || a.ordemEmbarque || 0,
-  }));
-  const escolas = (itinerario?.escolas || []).map((e) => ({
-    key: `escola-${e.escolaId}`,
-    id: e.escolaId,
-    tipo: 'escola',
-    nome: e.nome,
-    cidade: e.cidade,
-    ordemGlobal: e.ordemGlobal || e.ordemVisita || 0,
-  }));
-  return [...alunos, ...escolas].sort((a, b) => a.ordemGlobal - b.ordemGlobal);
+export function buildTrajeto(paradas) {
+  return (paradas || []).map((parada, index) => {
+    const tipo = parada.type === 'ESCOLA' ? 'escola' : 'aluno';
+    return {
+      key: `${tipo}-${parada.id}`,
+      id: parada.id,
+      tipo,
+      nome: parada.name,
+      escola: parada.schoolName,
+      sala: parada.classroom,
+      responsavel: parada.guardianName,
+      cidade: parada.address?.city,
+      address: parada.address,
+      ordemGlobal: index + 1,
+    };
+  });
 }
 
 export function reindexTrajeto(list) {
   return list.map((item, index) => ({ ...item, ordemGlobal: index + 1 }));
 }
 
-/** Monta `paradas` no formato do PUT /itinerarios/{id}. */
-export function toParadas(list) {
+/** Monta `stops` no formato do PUT /routes/{id}. */
+export function toStops(list) {
   let ordemAluno = 1;
   let ordemEscola = 1;
   return list.map((item, index) => ({
-    tipo: item.tipo === 'aluno' ? 'ALUNO' : 'ESCOLA',
+    type: item.tipo === 'aluno' ? 'ALUNO' : 'ESCOLA',
     id: item.id,
-    ordemGlobal: index + 1,
-    ordemEspecifica: item.tipo === 'aluno' ? ordemAluno++ : ordemEscola++,
+    generalOrder: index + 1,
+    specificOrder: item.tipo === 'aluno' ? ordemAluno++ : ordemEscola++,
   }));
 }

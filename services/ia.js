@@ -4,7 +4,7 @@ import { responderMock } from './iaMock';
 /**
  * @typedef {Object} AcaoIA
  * @property {'MARCAR_PRESENCA'} tipo
- * @property {number} alunoId
+ * @property {string} alunoId UUID do aluno no core
  * @property {string} nomeAluno
  * @property {'PRESENTE'|'AUSENTE'} status
  */
@@ -25,7 +25,7 @@ export const usandoMockIA = () => !apiUrl();
 
 /**
  * POST /ia/mensagens — envia a transcrição; a API Python guarda o texto no histórico da conversa.
- * @param {{ conversaId: string|null, texto: string, itinerarioId: number|null }} body
+ * @param {{ conversaId: string|null, texto: string, itinerarioId: string|null }} body itinerarioId é o UUID da rota
  * @param {Object} contextoLocal dados das telas, usados só pelo mock (a API real consulta o banco)
  * @returns {Promise<RespostaIA>}
  */

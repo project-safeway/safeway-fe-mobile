@@ -10,8 +10,8 @@ App mobile do SafeWay para o **motorista de transporte escolar** (projeto integr
 
 - **Funcionalidades:** login/cadastro, início, alunos agrupados por escola (cadastro e edição de aluno e escola), itinerários (cadastro, edição com arrastar para ordenar, histórico), rota com mapa e chamada de presença, financeiro (gráficos, mensalidades, despesas) e perfil.
 - **Assistente (aba Assistente):** o motorista fala ou digita ("o Enzo entrou na van", "como está meu financeiro?"). A transcrição é feita no celular; o texto vai para uma API Python (ainda não existe), que executa as ações no banco e responde.
-- **Estado atual: tudo mockado.** Nenhuma tela chama o back-end. A única chamada externa real é a Routes API do Google (caminho pelas ruas na rota).
-- **Fonte da verdade:** o front-end web (`../front-end/src/pages/*.jsx`) define telas, campos e regras. Os mocks usam só os campos que a API devolve.
+- **Estado atual: integrado ao back-end.** As telas chamam a API core (Java/Spring, porta 8080) e a API financeira (porta 8081) no IP do `API_HOST`, sem deploy. Só o assistente segue mockado (`services/iaMock.js`) enquanto a API Python não existe. `data/mock.js` fica no projeto como referência, mas nenhuma tela importa dele.
+- **Fonte da verdade:** telas e regras vêm do front-end web (`../front-end/src/pages/*.jsx`); **contrato de dados** vem dos DTOs do back-end (`../back-end/src/main/java/com/safeway/tech/api/dto`, `../safeway-financial-api`). O web legado usa a API antiga em português e não serve de contrato.
 - **Fora de escopo:** o fluxo de **pais/responsáveis foi vetado**. Não crie telas nem login para eles.
 
 ## Tech stack
@@ -64,11 +64,12 @@ app/                         Rotas (Expo Router: cada arquivo é uma tela)
     financeiro/              index (dashboard), mensalidades, despesas, despesa (criar/editar)
     perfil.jsx
 components/                  Button, Input, Select, Checkbox, Card, ScreenHeader, BackHeader,
-                             KeyboardScreen, EscolaForm, charts/ (BarChart, DonutChart), financeiro/
-contexts/                    FinanceiroContext (mensalidades/pagamentos), ChamadaContext (rota em andamento)
-hooks/                       useKeyboardBottomInset, useTranscricao
-services/                    rotas.js (Routes API), ia.js (API Python ou mock), iaMock.js
-data/mock.js                 Todos os mocks, no formato das respostas da API
+                             KeyboardScreen, EscolaForm, EstadoCarregamento, charts/ (BarChart, DonutChart), financeiro/
+contexts/                    FinanceiroContext (mensalidades/pagamentos da API), ChamadaContext (chamada aberta na API)
+hooks/                       useCarregar (busca no foco), useKeyboardBottomInset, useTranscricao
+services/                    api.js (cliente HTTP, token em memória, erros), auth, usuario, escolas, alunos,
+                             itinerarios, chamadas, financeiro, rotas.js (Routes API), ia.js (API Python ou mock), iaMock.js
+data/mock.js                 Mocks antigos, só referência (nenhuma tela importa)
 utils/                       formatters, validators, financeiro (KPIs, séries), trajeto, polyline
 constants/colors.js          Paleta (única fonte de cores)
 app.config.js                Config dinâmica; lê o .env
@@ -86,25 +87,28 @@ Repositórios irmãos (mesma pasta `../`): `front-end` (web React), `back-end` (
 - **Imports:** relativos (`../../components/Button`); não há alias.
 - **Estilos:** `StyleSheet.create` no fim do arquivo; cores só de `constants/colors.js` (se precisar de uma nova, adicione lá).
 - **Telas:** `SafeAreaView` com `edges` explícito; cabeçalho com `ScreenHeader` (abas) ou `BackHeader` (telas internas); formulários dentro de `KeyboardScreen`.
-- **Mocks e endpoints:** ações que no futuro chamam a API ficam no contexto/serviço, com o endpoint no JSDoc e um log `console.log('[mock] PATCH /api/v1/...', body)`. Ao integrar, troca-se só o corpo da função.
+- **Chamadas à API:** sempre por uma função em `services/<domínio>.js` (com o endpoint no JSDoc) usando `apiCore` ou `apiFinanceiro` de `services/api.js`; telas não usam `fetch` direto. Leitura de tela com `useCarregar` + `EstadoCarregamento`; erro de ação vira `Alert.alert(título, erro.message)`. Não há fallback para mock.
+- **Formatos da API core:** ids UUID (string), horários `"HH:mm:ss"`, datas `"YYYY-MM-DD"`, enums em inglês (`TO_SCHOOL`/`FROM_SCHOOL`, `PRESENT`/`ABSENT`, `IN_PROGRESS`/`FINISHED`/`CANCELLED`, `DAYCARE_CENTER`...). Erros vêm em texto puro.
 - **Textos de UI:** português, com acentuação correta. Ações destrutivas pedem confirmação com `Alert.alert`.
 - **Comentários:** só para restrições que o código não mostra. Nada de comentário narrando a linha seguinte.
 - **Commits:** conventional commits em português (`feat: tela de chat com IA`, `fix: ...`).
 
 ## Restrições
 
-- **Nunca** commitar nem imprimir a chave do Google. Ela vive no `.env` (gitignored) em `GOOGLE_MAPS_API_KEY`; o SHA-1 em `GOOGLE_ANDROID_CERT_SHA1`; a URL da IA em `IA_API_URL`. Variável nova → atualizar `.env.example` e o README.
+- **Nunca** commitar nem imprimir a chave do Google. Ela vive no `.env` (gitignored) em `GOOGLE_MAPS_API_KEY`; o SHA-1 em `GOOGLE_ANDROID_CERT_SHA1`; a URL da IA em `IA_API_URL`; o IP do back-end em `API_HOST`. Variável nova → atualizar `.env.example` e o README.
+- O token JWT fica **só em memória** (`services/api.js`), por decisão do usuário. Não persista sem ele pedir.
+- Back-end: mudanças só **aditivas**, na branch `feat/integracao-mobile` do `../back-end` (commits em inglês, padrão do repo). Não altere contrato existente.
 - O EAS **não** recebe o `.env`; variáveis do build vão com `eas env:create`.
 - Biblioteca **nativa** nova (ou plugin/permissão nova no `app.config.js`) exige **APK novo**. Prefira soluções só em JS e avise o usuário quando o APK for necessário.
 - Módulo nativo deve ser carregado de forma que o app **não quebre no Expo Go** (ex.: `requireOptionalNativeModule`, como em `hooks/useTranscricao.js`).
 - Não troque `softwareKeyboardLayoutMode: 'pan'` nem o padrão de teclado (`KeyboardScreen` + `useKeyboardBottomInset`) sem testar todas as telas com formulário.
 - `eas build:configure` não edita config dinâmica: mudanças de EAS vão à mão no `app.config.js`.
 - Escopo: quando o usuário disser "corrige somente isso", não mexa em mais nada.
-- Não invente campos nos mocks: confira no web ou na API.
+- Não invente campos: confira nos DTOs do back-end.
 
 ## Definição de pronto
 
-1. Comportamento igual ao web (quando existir equivalente), com dados mockados no formato da API.
+1. Comportamento igual ao web (quando existir equivalente), com os campos exatamente como a API devolve.
 2. `ReadLints` sem erros nos arquivos editados.
 3. `npx expo export --platform android ...` termina sem erro.
 4. `npx expo-doctor` com 21/21.
@@ -142,6 +146,11 @@ Repositórios irmãos (mesma pasta `../`): `front-end` (web React), `back-end` (
 | Acentos viram `�` em arquivo criado pelo terminal | `Set-Content` do PowerShell 5 grava em ANSI | Usar a ferramenta de escrita de arquivos ou `[IO.File]::WriteAllText(..., UTF8Encoding($false))` |
 | Comando rodou na pasta errada | O cwd do shell persiste entre chamadas | Sempre `cd "<caminho absoluto>"` no início |
 | Percentuais da legenda somam 101% | Arredondamento simples | Método do maior resto (`utils/financeiro.js`) |
+| "Não foi possível conectar ao servidor" | `API_HOST` errado, outra rede ou firewall | Conferir IP (`ipconfig`), mesma Wi-Fi, liberar 8080/8081 no Firewall do Windows |
+| Cadastro de escola/aluno: "Não foi possível localizar o endereço" | Geocoding falhou na API core | Conferir endereço e a chave Google configurada no back-end |
+| "A API financeira recusou o login" | Financeira com par RSA diferente da core | Usar as mesmas chaves RSA nas duas APIs |
+| Mensalidade não aparece após cadastrar aluno | RabbitMQ ou API financeira parados | Subir RabbitMQ e a API financeira |
+| HTTP bloqueado (`Network request failed`) só em APK preview/production | Android bloqueia HTTP sem TLS fora do debug | Usar o development build; liberar cleartext exige config nativa + APK novo |
 
 ## Hábitos de prompt
 
@@ -159,4 +168,4 @@ Repositórios irmãos (mesma pasta `../`): `front-end` (web React), `back-end` (
 
 ## MCP
 
-Nenhum servidor MCP está configurado para este projeto, e o back-end **ainda não foi integrado**. Não tente buscar dados reais via MCP ou API: use `data/mock.js` e os contextos. Quando o back-end (ou a API Python da IA) for integrado, documente aqui os servidores e o que cada um acessa.
+Nenhum servidor MCP está configurado para este projeto. O back-end roda só na máquina do usuário (sem deploy), então o agente não tem acesso aos dados reais: valide contratos lendo os DTOs/controllers em `../back-end` e `../safeway-financial-api` e a collection do Postman que o usuário fornecer (pode estar desatualizada; o código é a referência). Quando a API Python da IA existir, documente aqui o contrato e o acesso.

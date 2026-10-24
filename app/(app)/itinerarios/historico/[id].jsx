@@ -7,10 +7,14 @@ import { BackHeader } from '../../../../components/BackHeader';
 import { Card } from '../../../../components/Card';
 import { Input } from '../../../../components/Input';
 import { Select } from '../../../../components/Select';
+import { EstadoCarregamento } from '../../../../components/EstadoCarregamento';
 import { colors } from '../../../../constants/colors';
-import { mockHistoricoChamadas, mockItinerarios } from '../../../../data/mock';
+import { useCarregar } from '../../../../hooks/useCarregar';
+import { buscarItinerario } from '../../../../services/itinerarios';
+import { listarChamadas } from '../../../../services/chamadas';
+import { listarAlunos } from '../../../../services/alunos';
 import { maskDate } from '../../../../utils/formatters';
-import { STATUS_CHAMADA_LABELS } from '../../../../utils/constants';
+import { STATUS_CHAMADA_LABELS, TIPO_VIAGEM_LABELS } from '../../../../utils/constants';
 import { useKeyboardBottomInset } from '../../../../hooks/useKeyboardBottomInset';
 
 const FILTROS_INICIAIS = {
@@ -23,9 +27,7 @@ const FILTROS_INICIAIS = {
 
 const STATUS_OPTIONS = [
   { value: '', label: 'Todos' },
-  { value: 'EM_ANDAMENTO', label: 'Em Andamento' },
-  { value: 'FINALIZADA', label: 'Finalizada' },
-  { value: 'CANCELADA', label: 'Cancelada' },
+  ...Object.entries(STATUS_CHAMADA_LABELS).map(([value, label]) => ({ value, label })),
 ];
 
 const ORDEM_OPTIONS = [
@@ -42,21 +44,22 @@ function parseDataBR(valor, fimDoDia = false) {
   return isNaN(data.getTime()) ? null : data;
 }
 
-function processarHistorico(chamadas, alunosItinerario) {
+function processarHistorico(chamadas, alunos) {
+  const responsavelPorAluno = Object.fromEntries(
+    alunos.map((aluno) => [aluno.id, aluno.guardians?.[0]?.name])
+  );
   return chamadas.flatMap((chamada) =>
-    (chamada.alunos || []).map((ca) => {
-      const aluno = ca.aluno || {};
-      const dataCompleta = new Date(ca.dataHora);
-      const doItinerario = alunosItinerario.find((a) => a.nomeAluno === aluno.nome);
+    (chamada.presences || []).map((presenca) => {
+      const dataCompleta = new Date(presenca.date || chamada.createdAt);
       return {
-        id: `${chamada.id}-${aluno.nome}`,
-        nomeAluno: aluno.nome || 'Sem nome',
-        escola: aluno.escola?.nome || 'Não informado',
-        responsavel: doItinerario?.nomeResponsavel || 'Não informado',
-        sala: aluno.sala || '',
+        id: `${chamada.id}-${presenca.studentId}`,
+        nomeAluno: presenca.studentName || 'Sem nome',
+        escola: presenca.schoolName || 'Não informado',
+        responsavel: responsavelPorAluno[presenca.studentId] || 'Não informado',
+        sala: presenca.classroom || '',
         data: dataCompleta.toLocaleDateString('pt-BR'),
         horarioRegistro: dataCompleta.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
-        presente: ca.presenca === 'PRESENTE',
+        presente: presenca.presence === 'PRESENT',
         statusChamada: chamada.status,
         dataCompleta,
       };
@@ -64,20 +67,23 @@ function processarHistorico(chamadas, alunosItinerario) {
   );
 }
 
+async function buscarHistorico(id) {
+  const [itinerario, chamadas, alunos] = await Promise.all([
+    buscarItinerario(id),
+    listarChamadas(id),
+    listarAlunos(),
+  ]);
+  return { itinerario, historico: processarHistorico(chamadas, alunos) };
+}
+
 export default function HistoricoScreen() {
   const { id } = useLocalSearchParams();
   const keyboardInset = useKeyboardBottomInset();
-  const itinerario = useMemo(
-    () => mockItinerarios.find((i) => String(i.id) === String(id)) || mockItinerarios[0],
-    [id]
-  );
+  const { dados, erro, recarregar } = useCarregar(() => buscarHistorico(id), [id]);
+  const itinerario = dados?.itinerario;
+  const historico = useMemo(() => dados?.historico ?? [], [dados]);
   const [filtros, setFiltros] = useState(FILTROS_INICIAIS);
   const [filtrosAbertos, setFiltrosAbertos] = useState(false);
-
-  const historico = useMemo(
-    () => processarHistorico(mockHistoricoChamadas[itinerario.id] || [], itinerario.alunos || []),
-    [itinerario]
-  );
 
   const escolaOptions = useMemo(
     () => [
@@ -108,9 +114,11 @@ export default function HistoricoScreen() {
   const header = (
     <>
       <BackHeader title="Histórico" subtitle="Visualize o histórico de presença por itinerário" />
-      <Text style={styles.itinerarioInfo}>
-        {itinerario.nome} • {itinerario.tipoViagem === 'SO_IDA' ? 'Ida' : 'Volta'}
-      </Text>
+      {itinerario ? (
+        <Text style={styles.itinerarioInfo}>
+          {itinerario.name} • {TIPO_VIAGEM_LABELS[itinerario.routeType] ?? itinerario.routeType}
+        </Text>
+      ) : null}
 
       <View style={styles.stats}>
         <Card style={styles.statCard}>
@@ -207,15 +215,19 @@ export default function HistoricoScreen() {
           keyboardDismissMode="on-drag"
           ListHeaderComponent={header}
           ListEmptyComponent={
-            <Card style={styles.emptyCard}>
-              <Ionicons name="time-outline" size={40} color={colors.border} />
-              <Text style={styles.emptyTitle}>Nenhum registro encontrado</Text>
-              <Text style={styles.emptyText}>
-                {historico.length === 0
-                  ? 'Não há histórico de chamadas para este itinerário.'
-                  : 'Tente ajustar os filtros para encontrar registros.'}
-              </Text>
-            </Card>
+            !dados ? (
+              <EstadoCarregamento erro={erro} onTentarNovamente={recarregar} />
+            ) : (
+              <Card style={styles.emptyCard}>
+                <Ionicons name="time-outline" size={40} color={colors.border} />
+                <Text style={styles.emptyTitle}>Nenhum registro encontrado</Text>
+                <Text style={styles.emptyText}>
+                  {historico.length === 0
+                    ? 'Não há histórico de chamadas para este itinerário.'
+                    : 'Tente ajustar os filtros para encontrar registros.'}
+                </Text>
+              </Card>
+            )
           }
           renderItem={({ item }) => (
             <Card style={styles.card}>

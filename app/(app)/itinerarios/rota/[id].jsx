@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, StyleSheet, FlatList, Switch, TouchableOpacity, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import MapView, { Marker, Polyline } from 'react-native-maps';
@@ -6,25 +6,18 @@ import * as Location from 'expo-location';
 import { useLocalSearchParams, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Button } from '../../../../components/Button';
+import { BackHeader } from '../../../../components/BackHeader';
+import { EstadoCarregamento } from '../../../../components/EstadoCarregamento';
 import { colors } from '../../../../constants/colors';
-import {
-  mockItinerarios,
-  mockAlunosDetalhe,
-  mockEscolasComAlunos,
-  mockRotas,
-} from '../../../../data/mock';
+import { useCarregar } from '../../../../hooks/useCarregar';
+import { buscarItinerario, buscarParadas } from '../../../../services/itinerarios';
 import { buildTrajeto } from '../../../../utils/trajeto';
+import { formatEndereco, horaCurta } from '../../../../utils/formatters';
+import { TIPO_VIAGEM_LABELS } from '../../../../utils/constants';
 import { buscarCaminhoPelasRuas } from '../../../../services/rotas';
 import { useChamada } from '../../../../contexts/ChamadaContext';
 
 const SAO_PAULO = { latitude: -23.5613, longitude: -46.6565, latitudeDelta: 0.06, longitudeDelta: 0.06 };
-
-function enderecoDaParada(parada) {
-  if (parada.tipo === 'aluno') {
-    return mockAlunosDetalhe[parada.id]?.responsaveis?.[0]?.endereco;
-  }
-  return mockEscolasComAlunos.find((item) => item.escola.id === parada.id)?.escola.endereco;
-}
 
 function coordenada(endereco) {
   const latitude = parseFloat(endereco?.latitude);
@@ -35,31 +28,47 @@ function coordenada(endereco) {
 
 export default function RotaScreen() {
   const { id } = useLocalSearchParams();
+  const { dados, erro, recarregar } = useCarregar(async () => {
+    const [itinerario, paradas] = await Promise.all([buscarItinerario(id), buscarParadas(id)]);
+    return { itinerario, paradas };
+  }, [id]);
+
+  if (!dados) {
+    return (
+      <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
+        <View style={styles.list}>
+          <BackHeader title="Rota" subtitle="Mapa e chamada de presença" />
+          <EstadoCarregamento erro={erro} onTentarNovamente={recarregar} />
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  return <RotaEmAndamento itinerario={dados.itinerario} paradasApi={dados.paradas} />;
+}
+
+function RotaEmAndamento({ itinerario, paradasApi }) {
   const mapRef = useRef(null);
-  const itinerario = useMemo(
-    () => mockItinerarios.find((i) => String(i.id) === String(id)) || mockItinerarios[0],
-    [id]
-  );
   const [localizacaoPermitida, setLocalizacaoPermitida] = useState(false);
   const [caminho, setCaminho] = useState(null);
+  const [enviando, setEnviando] = useState(false);
 
+  // O recarregamento no foco devolve arrays novos; a chave evita refazer o caminho no Google sem mudança real.
+  const chaveParadas = JSON.stringify(paradasApi);
   const paradas = useMemo(
     () =>
-      buildTrajeto(itinerario).map((parada) => {
-        const endereco = enderecoDaParada(parada);
-        return {
-          ...parada,
-          endereco: endereco ? `${endereco.logradouro}, ${endereco.numero} - ${endereco.bairro}` : null,
-          coordenada: coordenada(endereco),
-        };
-      }),
-    [itinerario]
+      buildTrajeto(JSON.parse(chaveParadas)).map((parada) => ({
+        ...parada,
+        endereco: formatEndereco(parada.address),
+        coordenada: coordenada(parada.address),
+      })),
+    [chaveParadas]
   );
   const pontosMapa = useMemo(() => paradas.filter((p) => p.coordenada), [paradas]);
 
   const resumo = caminho
     ? { distanciaTotal: caminho.distanciaMetros, tempoTotal: caminho.duracaoSegundos }
-    : mockRotas[itinerario.id];
+    : null;
 
   useEffect(() => {
     let ativo = true;
@@ -97,13 +106,30 @@ export default function RotaScreen() {
     };
   }, [pontosMapa]);
 
-  const { chamada, iniciarChamada, marcarPresenca, encerrarChamada } = useChamada();
+  const { chamada, iniciarChamada, marcarPresenca, finalizarChamada, cancelarChamada } = useChamada();
+  const encerradaRef = useRef(false);
+
+  const alunosTrajeto = useMemo(
+    () => paradas.filter((p) => p.tipo === 'aluno').map((p) => ({ id: p.id, nome: p.nome })),
+    [paradas]
+  );
+
+  const abrirChamada = useCallback(() => {
+    if (encerradaRef.current) return;
+    iniciarChamada(itinerario, alunosTrajeto).catch((e) =>
+      Alert.alert('Não foi possível iniciar a chamada', e.message, [
+        { text: 'Voltar', style: 'cancel', onPress: () => router.back() },
+        { text: 'Tentar novamente', onPress: abrirChamada },
+      ])
+    );
+  }, [itinerario, alunosTrajeto, iniciarChamada]);
 
   useEffect(() => {
-    iniciarChamada(itinerario);
-  }, [itinerario, iniciarChamada]);
+    abrirChamada();
+  }, [abrirChamada]);
 
-  const presencas = chamada?.itinerarioId === itinerario.id ? chamada.presencas : {};
+  const chamadaAtiva = chamada?.itinerarioId === itinerario.id ? chamada : null;
+  const presencas = chamadaAtiva?.presencas ?? {};
   const totalAlunos = paradas.filter((p) => p.tipo === 'aluno').length;
   const totalPresentes = Object.values(presencas).filter(Boolean).length;
 
@@ -121,10 +147,20 @@ export default function RotaScreen() {
     if (caminho) enquadrarMapa(true);
   }, [caminho]);
 
+  const encerrar = async (acao, tituloErro, aoConcluir) => {
+    setEnviando(true);
+    try {
+      await acao();
+      encerradaRef.current = true;
+      aoConcluir();
+    } catch (e) {
+      Alert.alert(tituloErro, e.message);
+    } finally {
+      setEnviando(false);
+    }
+  };
+
   const finalizar = () => {
-    const payload = Object.fromEntries(
-      Object.entries(presencas).map(([alunoId, presente]) => [alunoId, presente ? 'PRESENTE' : 'AUSENTE'])
-    );
     Alert.alert(
       'Finalizar rota',
       `Presentes: ${totalPresentes} | Ausentes: ${totalAlunos - totalPresentes}\n\nDeseja finalizar a chamada?`,
@@ -132,13 +168,12 @@ export default function RotaScreen() {
         { text: 'Voltar', style: 'cancel' },
         {
           text: 'Sim, finalizar',
-          onPress: () => {
-            console.log('[mock] registrarPresenca', payload, '→ FINALIZADA');
-            encerrarChamada();
-            Alert.alert('Chamada finalizada', 'Presenças registradas com sucesso!', [
-              { text: 'OK', onPress: () => router.back() },
-            ]);
-          },
+          onPress: () =>
+            encerrar(finalizarChamada, 'Não foi possível finalizar', () =>
+              Alert.alert('Chamada finalizada', 'Presenças registradas com sucesso!', [
+                { text: 'OK', onPress: () => router.back() },
+              ])
+            ),
         },
       ]
     );
@@ -150,11 +185,7 @@ export default function RotaScreen() {
       {
         text: 'Sim, cancelar',
         style: 'destructive',
-        onPress: () => {
-          console.log('[mock] alterarStatusChamada → CANCELADA');
-          encerrarChamada();
-          router.back();
-        },
+        onPress: () => encerrar(cancelarChamada, 'Não foi possível cancelar', () => router.back()),
       },
     ]);
   };
@@ -186,6 +217,7 @@ export default function RotaScreen() {
             </Text>
             <Switch
               value={presente}
+              disabled={!chamadaAtiva || enviando}
               onValueChange={(v) => marcarPresenca(item.id, v)}
               trackColor={{ false: colors.border, true: colors.successAlt }}
               thumbColor={colors.white}
@@ -242,10 +274,10 @@ export default function RotaScreen() {
         ItemSeparatorComponent={() => <View style={styles.separator} />}
         ListHeaderComponent={
           <View style={styles.listHeader}>
-            <Text style={styles.title}>{itinerario.nome}</Text>
+            <Text style={styles.title}>{itinerario.name}</Text>
             <Text style={styles.subtitle}>
-              {itinerario.horarioInicio} - {itinerario.horarioFim} •{' '}
-              {itinerario.tipoViagem === 'SO_IDA' ? 'Ida' : 'Volta'}
+              {horaCurta(itinerario.startTime) || '--:--'} - {horaCurta(itinerario.endTime) || '--:--'} •{' '}
+              {TIPO_VIAGEM_LABELS[itinerario.routeType] ?? itinerario.routeType}
             </Text>
 
             <View style={styles.resumo}>
@@ -292,8 +324,20 @@ export default function RotaScreen() {
       />
 
       <View style={styles.footer}>
-        <Button title="Cancelar" variant="outline" onPress={cancelar} style={styles.footerBtn} />
-        <Button title="Finalizar Rota" onPress={finalizar} style={styles.footerBtn} />
+        <Button
+          title="Cancelar"
+          variant="outline"
+          onPress={cancelar}
+          disabled={!chamadaAtiva || enviando}
+          style={styles.footerBtn}
+        />
+        <Button
+          title="Finalizar Rota"
+          onPress={finalizar}
+          loading={enviando}
+          disabled={!chamadaAtiva}
+          style={styles.footerBtn}
+        />
       </View>
     </SafeAreaView>
   );

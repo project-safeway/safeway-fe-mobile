@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -13,8 +13,8 @@ import * as ImagePicker from 'expo-image-picker';
 import { Input } from '../../components/Input';
 import { Button } from '../../components/Button';
 import { KeyboardScreen } from '../../components/KeyboardScreen';
+import { EstadoCarregamento } from '../../components/EstadoCarregamento';
 import { colors } from '../../constants/colors';
-import { mockMotorista } from '../../data/mock';
 import {
   isValidEmail,
   isValidPhone,
@@ -22,16 +22,36 @@ import {
   isValidPlaca,
 } from '../../utils/validators';
 import { maskPhone, maskPlaca } from '../../utils/formatters';
+import { atualizarUsuario, buscarUsuario } from '../../services/usuario';
+import { sair } from '../../services/auth';
 
 export default function PerfilScreen() {
-  const [nome, setNome] = useState(mockMotorista.nome);
-  const [email, setEmail] = useState(mockMotorista.email);
-  const [telefone, setTelefone] = useState(mockMotorista.telefone);
-  const [veiculo, setVeiculo] = useState(mockMotorista.veiculo);
-  const [placa, setPlaca] = useState(mockMotorista.placa);
-  const [fotoUri, setFotoUri] = useState(mockMotorista.fotoUri || null);
+  const [usuario, setUsuario] = useState(null);
+  const [erroCarregamento, setErroCarregamento] = useState(null);
+  const [nome, setNome] = useState('');
+  const [email, setEmail] = useState('');
+  const [telefone, setTelefone] = useState('');
+  const [veiculo, setVeiculo] = useState('');
+  const [placa, setPlaca] = useState('');
+  const [fotoUri, setFotoUri] = useState(null);
   const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);
+
+  const preencher = (dados) => {
+    setUsuario(dados);
+    setNome(dados.name ?? '');
+    setEmail(dados.email ?? '');
+    setTelefone(maskPhone(dados.primaryPhoneNumber ?? ''));
+    setVeiculo(dados.transport?.model ?? '');
+    setPlaca(maskPlaca(dados.transport?.licensePlate ?? ''));
+  };
+
+  const carregar = () => {
+    setErroCarregamento(null);
+    buscarUsuario().then(preencher).catch(setErroCarregamento);
+  };
+
+  useEffect(carregar, []);
 
   const pickFromLibrary = async () => {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -77,7 +97,7 @@ export default function PerfilScreen() {
     ]);
   };
 
-  const save = () => {
+  const save = async () => {
     const next = {};
     if (!isRequired(nome)) next.nome = 'Nome obrigatório';
     if (!isValidEmail(email)) next.email = 'E-mail inválido';
@@ -88,11 +108,44 @@ export default function PerfilScreen() {
     if (Object.keys(next).length) return;
 
     setLoading(true);
-    setTimeout(() => {
+    try {
+      const atualizado = await atualizarUsuario({
+        name: nome.trim(),
+        email: email.trim(),
+        primaryPhoneNumber: telefone.replace(/\D/g, ''),
+        secondaryPhoneNumber: usuario.secondaryPhoneNumber,
+        transport: {
+          licensePlate: placa.replace(/[^A-Za-z0-9]/g, ''),
+          model: veiculo.trim(),
+          capacity: usuario.transport?.capacity,
+        },
+      });
+      preencher(atualizado);
+      Alert.alert('Perfil atualizado', 'Seus dados foram salvos.');
+    } catch (erro) {
+      Alert.alert('Não foi possível salvar', erro.message);
+    } finally {
       setLoading(false);
-      Alert.alert('Perfil atualizado', 'Dados do motorista salvos (mock).');
-    }, 500);
+    }
   };
+
+  const logout = () => {
+    sair();
+    router.replace('/login');
+  };
+
+  if (!usuario) {
+    return (
+      <KeyboardScreen edges={['top']}>
+        <Text style={styles.eyebrow}>Conta</Text>
+        <Text style={styles.title}>Meu Perfil</Text>
+        <EstadoCarregamento erro={erroCarregamento} onTentarNovamente={carregar} />
+        <TouchableOpacity style={styles.logout} onPress={logout}>
+          <Text style={styles.logoutText}>Sair da conta</Text>
+        </TouchableOpacity>
+      </KeyboardScreen>
+    );
+  }
 
   return (
     <KeyboardScreen edges={['top']}>
@@ -162,7 +215,7 @@ export default function PerfilScreen() {
 
       <Button title="Salvar alterações" onPress={save} loading={loading} style={styles.save} />
 
-      <TouchableOpacity style={styles.logout} onPress={() => router.replace('/login')}>
+      <TouchableOpacity style={styles.logout} onPress={logout}>
         <Text style={styles.logoutText}>Sair da conta</Text>
       </TouchableOpacity>
     </KeyboardScreen>

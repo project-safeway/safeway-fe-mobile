@@ -105,7 +105,21 @@ export function brToISO(valor) {
   return `${a}-${m}-${d}`;
 }
 
+/** "06:30:00" -> "06:30" */
+export function horaCurta(hora) {
+  return String(hora || '').slice(0, 5);
+}
+
+/** AddressResponse da API -> "Rua X, 123 - Bairro" */
+export function formatEndereco(address) {
+  if (!address) return null;
+  const rua = [address.street, address.number].filter(Boolean).join(', ');
+  return [rua, address.neighborhood].filter(Boolean).join(' - ') || null;
+}
+
+/** Datas sem hora ("2016-03-12") viram dia local, sem o deslocamento de fuso do `new Date`. */
 export function formatDate(date) {
+  if (typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date)) return isoToBR(date);
   try {
     const dateObj = date instanceof Date ? date : new Date(date);
     if (isNaN(dateObj.getTime())) return 'Data inválida';

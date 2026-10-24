@@ -17,6 +17,7 @@ import { Button } from '../components/Button';
 import { colors } from '../constants/colors';
 import { validateLoginForm } from '../utils/validators';
 import { useKeyboardBottomInset } from '../hooks/useKeyboardBottomInset';
+import { entrar } from '../services/auth';
 
 export default function LoginScreen() {
   const scrollRef = useRef(null);
@@ -39,16 +40,20 @@ export default function LoginScreen() {
     });
   };
 
-  const handleLogin = () => {
+  const handleLogin = async () => {
     const result = validateLoginForm({ email, senha });
     setErrors(result.errors);
     if (!result.isValid) return;
 
     setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
+    try {
+      await entrar(email.trim(), senha);
       router.replace('/(app)');
-    }, 500);
+    } catch (erro) {
+      Alert.alert('Não foi possível entrar', erro.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (

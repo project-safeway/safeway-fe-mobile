@@ -8,16 +8,17 @@ import { BackHeader } from '../../../components/BackHeader';
 import { KeyboardScreen } from '../../../components/KeyboardScreen';
 import { isRequired } from '../../../utils/validators';
 import { HORARIO_OPTIONS, TIPO_VIAGEM_OPTIONS } from '../../../utils/constants';
+import { criarItinerario } from '../../../services/itinerarios';
 
 export default function CadastrarItinerarioScreen() {
   const [nome, setNome] = useState('');
   const [horarioInicio, setHorarioInicio] = useState('');
   const [horarioFim, setHorarioFim] = useState('');
-  const [tipoViagem, setTipoViagem] = useState('SO_IDA');
+  const [tipoViagem, setTipoViagem] = useState('TO_SCHOOL');
   const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);
 
-  const submit = () => {
+  const submit = async () => {
     const next = {};
     if (!isRequired(nome)) next.nome = 'Nome é obrigatório';
     if (!horarioInicio) next.horarioInicio = 'Horário de início é obrigatório';
@@ -29,12 +30,21 @@ export default function CadastrarItinerarioScreen() {
     if (Object.keys(next).length) return;
 
     setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
+    try {
+      await criarItinerario({
+        name: nome.trim(),
+        startTime: `${horarioInicio}:00`,
+        endTime: `${horarioFim}:00`,
+        routeType: tipoViagem,
+      });
       Alert.alert('Itinerário criado', 'Itinerário criado com sucesso!', [
         { text: 'OK', onPress: () => router.back() },
       ]);
-    }, 500);
+    } catch (e) {
+      Alert.alert('Não foi possível criar', e.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (

@@ -1,6 +1,9 @@
 const googleMapsApiKey = process.env.GOOGLE_MAPS_API_KEY?.trim();
 const googleAndroidCertSha1 = process.env.GOOGLE_ANDROID_CERT_SHA1?.replace(/:/g, '').trim();
 const iaApiUrl = process.env.IA_API_URL?.trim().replace(/\/+$/, '');
+const apiHost = process.env.API_HOST?.trim()
+  .replace(/^https?:\/\//, '')
+  .replace(/[:/].*$/, '');
 
 module.exports = {
   expo: {
@@ -74,6 +77,9 @@ module.exports = {
       },
       ia: {
         ...(iaApiUrl ? { apiUrl: iaApiUrl } : {}),
+      },
+      api: {
+        ...(apiHost ? { host: apiHost } : {}),
       },
       eas: {
         projectId: '3f6f8e0b-8311-42ad-a9bd-e2f5b78c31a9',

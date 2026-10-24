@@ -1,10 +1,11 @@
-import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Card } from '../../components/Card';
 import { colors } from '../../constants/colors';
-import { mockMotorista } from '../../data/mock';
+import { useCarregar } from '../../hooks/useCarregar';
+import { buscarUsuario } from '../../services/usuario';
 
 const modules = [
   {
@@ -31,13 +32,16 @@ const modules = [
 ];
 
 export default function HomeScreen() {
+  const { dados: usuario } = useCarregar(buscarUsuario);
+  const primeiroNome = usuario?.name?.split(' ')[0];
+
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <View style={styles.content}>
         <View style={styles.header}>
           <View style={styles.headerText}>
             <Text style={styles.eyebrow}>SafeWay</Text>
-            <Text style={styles.greeting}>Olá, {mockMotorista.nome.split(' ')[0]}</Text>
+            <Text style={styles.greeting}>{primeiroNome ? `Olá, ${primeiroNome}` : 'Olá!'}</Text>
             <Text style={styles.subtitle}>Sistema de Transporte Escolar</Text>
           </View>
           <TouchableOpacity
@@ -45,13 +49,9 @@ export default function HomeScreen() {
             onPress={() => router.push('/(app)/perfil')}
             accessibilityLabel="Abrir perfil"
           >
-            {mockMotorista.fotoUri ? (
-              <Image source={{ uri: mockMotorista.fotoUri }} style={styles.avatarImg} />
-            ) : (
-              <View style={styles.avatar}>
-                <Ionicons name="person" size={22} color={colors.white} />
-              </View>
-            )}
+            <View style={styles.avatar}>
+              <Ionicons name="person" size={22} color={colors.white} />
+            </View>
           </TouchableOpacity>
         </View>
 
@@ -105,7 +105,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  avatarImg: { width: 48, height: 48, borderRadius: 24 },
   section: {
     fontSize: 16,
     fontWeight: '700',

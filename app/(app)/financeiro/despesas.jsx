@@ -1,10 +1,11 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, KeyboardAvoidingView, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { BackHeader } from '../../../components/BackHeader';
 import { Card } from '../../../components/Card';
+import { EstadoCarregamento } from '../../../components/EstadoCarregamento';
 import { Input } from '../../../components/Input';
 import { Select } from '../../../components/Select';
 import { FiltrosCard } from '../../../components/financeiro/FiltrosCard';
@@ -41,7 +42,12 @@ function comparar(a, b, campo) {
 }
 
 export default function DespesasScreen() {
-  const { pagamentos, excluirPagamento } = useFinanceiro();
+  const { pagamentos, carregado, erro, recarregar, excluirPagamento } = useFinanceiro();
+  useFocusEffect(
+    useCallback(() => {
+      recarregar();
+    }, [recarregar])
+  );
   const keyboardInset = useKeyboardBottomInset();
   const [filtros, setFiltros] = useState(filtrosIniciais);
   const [ordenacao, setOrdenacao] = useState(ORDENACAO_INICIAL);
@@ -173,11 +179,15 @@ export default function DespesasScreen() {
           keyboardDismissMode="on-drag"
           ListHeaderComponent={header}
           ListEmptyComponent={
-            <Card style={styles.emptyCard}>
-              <Ionicons name="receipt-outline" size={40} color={colors.border} />
-              <Text style={styles.emptyTitle}>Nenhuma despesa encontrada</Text>
-              <Text style={styles.emptyText}>Ajuste os filtros ou registre uma nova despesa.</Text>
-            </Card>
+            carregado ? (
+              <Card style={styles.emptyCard}>
+                <Ionicons name="receipt-outline" size={40} color={colors.border} />
+                <Text style={styles.emptyTitle}>Nenhuma despesa encontrada</Text>
+                <Text style={styles.emptyText}>Ajuste os filtros ou registre uma nova despesa.</Text>
+              </Card>
+            ) : (
+              <EstadoCarregamento erro={erro} onTentarNovamente={recarregar} />
+            )
           }
           renderItem={({ item }) => {
             const categoria = categoriaDaDespesa(item.descricao);
