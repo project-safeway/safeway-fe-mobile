@@ -42,5 +42,3 @@ yarn-error.*
 /android
 
 .claude/
-CLAUDE.md
-AGENTS.md
