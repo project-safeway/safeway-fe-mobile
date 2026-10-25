@@ -1,15 +1,48 @@
-import { useState } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, Alert } from 'react-native';
+import { useCallback, useEffect, useState } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  FlatList,
+  TouchableOpacity,
+  Alert,
+  ActivityIndicator,
+  RefreshControl,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { BackHeader } from '../../../components/BackHeader';
 import { Card } from '../../../components/Card';
 import { colors } from '../../../constants/colors';
-import { mockItinerarios } from '../../../data/mock';
+import { listarItinerarios } from '../../../services/chamada';
 
 export default function ItinerariosScreen() {
-  const [lista, setLista] = useState(mockItinerarios);
+  const [lista, setLista] = useState([]);
+  const [carregando, setCarregando] = useState(true);
+  const [atualizando, setAtualizando] = useState(false);
+  const [erro, setErro] = useState(null);
+
+  const carregar = useCallback(async () => {
+    try {
+      setErro(null);
+      setLista(await listarItinerarios());
+    } catch (error) {
+      setErro(error.message);
+    } finally {
+      setCarregando(false);
+      setAtualizando(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    carregar();
+  }, [carregar]);
+
+  const atualizar = () => {
+    setAtualizando(true);
+    carregar();
+  };
 
   const excluir = (id, nome) => {
     Alert.alert('Excluir itinerário', `Excluir "${nome}"?`, [
@@ -28,6 +61,9 @@ export default function ItinerariosScreen() {
         data={lista}
         keyExtractor={(item) => String(item.id)}
         contentContainerStyle={styles.content}
+        refreshControl={
+          <RefreshControl refreshing={atualizando} onRefresh={atualizar} colors={[colors.primary]} />
+        }
         ListHeaderComponent={
           <>
             <BackHeader
@@ -44,7 +80,18 @@ export default function ItinerariosScreen() {
           </>
         }
         ListEmptyComponent={
-          <Text style={styles.empty}>Nenhum itinerário cadastrado.</Text>
+          carregando ? (
+            <ActivityIndicator style={styles.loading} color={colors.primary} />
+          ) : erro ? (
+            <View style={styles.erroBox}>
+              <Text style={styles.erroTexto}>Não foi possível carregar os itinerários: {erro}</Text>
+              <TouchableOpacity onPress={atualizar} style={styles.tentar}>
+                <Text style={styles.tentarTexto}>Tentar de novo</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <Text style={styles.empty}>Nenhum itinerário cadastrado.</Text>
+          )
         }
         renderItem={({ item }) => (
           <Card style={styles.card}>
@@ -123,6 +170,11 @@ const styles = StyleSheet.create({
   },
   createText: { color: colors.white, fontWeight: '700' },
   empty: { textAlign: 'center', color: colors.textMuted, marginTop: 24 },
+  loading: { marginTop: 32 },
+  erroBox: { marginTop: 24, alignItems: 'center', gap: 12 },
+  erroTexto: { textAlign: 'center', color: colors.error },
+  tentar: { paddingHorizontal: 16, paddingVertical: 8 },
+  tentarTexto: { color: colors.primary, fontWeight: '700' },
   card: { gap: 12 },
   head: { flexDirection: 'row', justifyContent: 'space-between', gap: 8 },
   headText: { flex: 1 },

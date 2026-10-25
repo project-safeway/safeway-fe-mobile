@@ -15,6 +15,7 @@ import { Button } from '../../components/Button';
 import { KeyboardScreen } from '../../components/KeyboardScreen';
 import { colors } from '../../constants/colors';
 import { mockMotorista } from '../../data/mock';
+import { sair } from '../../services/auth';
 import {
   isValidEmail,
   isValidPhone,
@@ -94,6 +95,20 @@ export default function PerfilScreen() {
     }, 500);
   };
 
+  const confirmarSaida = () => {
+    Alert.alert('Sair da conta', 'Deseja sair? Você precisará entrar de novo com e-mail e senha.', [
+      { text: 'Cancelar', style: 'cancel' },
+      {
+        text: 'Sair',
+        style: 'destructive',
+        onPress: async () => {
+          await sair();
+          router.replace('/login');
+        },
+      },
+    ]);
+  };
+
   return (
     <KeyboardScreen edges={['top']}>
       <Text style={styles.eyebrow}>Conta</Text>
@@ -162,7 +177,7 @@ export default function PerfilScreen() {
 
       <Button title="Salvar alterações" onPress={save} loading={loading} style={styles.save} />
 
-      <TouchableOpacity style={styles.logout} onPress={() => router.replace('/login')}>
+      <TouchableOpacity style={styles.logout} onPress={confirmarSaida}>
         <Text style={styles.logoutText}>Sair da conta</Text>
       </TouchableOpacity>
     </KeyboardScreen>

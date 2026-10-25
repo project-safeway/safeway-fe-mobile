@@ -1,12 +1,13 @@
 const googleMapsApiKey = process.env.GOOGLE_MAPS_API_KEY?.trim();
 const googleAndroidCertSha1 = process.env.GOOGLE_ANDROID_CERT_SHA1?.replace(/:/g, '').trim();
 const iaApiUrl = process.env.IA_API_URL?.trim().replace(/\/+$/, '');
+const coreApiUrl = process.env.CORE_API_URL?.trim().replace(/\/+$/, '');
 
 module.exports = {
   expo: {
     name: 'SafeWay',
     slug: 'safeway-fe-mobile',
-    owner: 'gustavosptech',
+    owner: 'safewaysptech',
     version: '1.0.0',
     orientation: 'portrait',
     icon: './assets/icon.png',
@@ -31,6 +32,7 @@ module.exports = {
       'expo-router',
       'expo-font',
       'expo-status-bar',
+      'expo-secure-store',
       [
         'expo-splash-screen',
         {
@@ -51,7 +53,7 @@ module.exports = {
         'expo-location',
         {
           locationWhenInUsePermission:
-            'O SafeWay usa sua localização para mostrar a van no mapa durante a rota.',
+            'O SafeWay usa sua localização para mostrar a van no mapa durante a rota e, no assistente, para incluir onde você está nos avisos aos responsáveis e sugerir postos próximos.',
         },
       ],
       [
@@ -75,8 +77,11 @@ module.exports = {
       ia: {
         ...(iaApiUrl ? { apiUrl: iaApiUrl } : {}),
       },
+      coreApi: {
+        ...(coreApiUrl ? { apiUrl: coreApiUrl } : {}),
+      },
       eas: {
-        projectId: '3f6f8e0b-8311-42ad-a9bd-e2f5b78c31a9',
+        projectId: '2b22f798-bcaf-477f-8f48-c6b74a3a9f76',
       },
     },
   },

@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -9,19 +9,40 @@ import {
   KeyboardAvoidingView,
   Keyboard,
   ActivityIndicator,
+  Linking,
+  Alert,
+  AppState,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { ScreenHeader } from '../../components/ScreenHeader';
+import { CartaoMensagem } from '../../components/assistente/CartaoMensagem';
+import { CartaoPostos } from '../../components/assistente/CartaoPostos';
 import { colors } from '../../constants/colors';
-import { useChamada } from '../../contexts/ChamadaContext';
+import { contarPresencas, useChamada } from '../../contexts/ChamadaContext';
 import { useFinanceiro } from '../../contexts/FinanceiroContext';
 import { useTranscricao } from '../../hooks/useTranscricao';
+import { useLeituraEmVoz } from '../../hooks/useLeituraEmVoz';
 import { enviarMensagem, usandoMockIA } from '../../services/ia';
+import {
+  obterLocalizacaoRapida,
+  pedirPermissaoLocalizacao,
+  statusPermissaoLocalizacao,
+} from '../../services/localizacao';
+import { obterSessao } from '../../services/sessao';
+import { interpretarConfirmacao, montarLinkWhatsApp } from '../../utils/mensagens';
+import { infoPresenca } from '../../utils/presenca';
 
 let proximoId = 1;
-const novaMensagem = (dados) => ({ id: String(proximoId++), ...dados });
+const novoId = () => String(proximoId++);
+const novaMensagem = (dados) => ({ id: novoId(), ...dados });
 const primeiroNome = (nome) => String(nome || '').split(' ')[0];
+
+/** Rascunhos ainda não abertos nem descartados, na ordem em que chegaram. */
+const rascunhosPendentes = (mensagens) =>
+  mensagens.flatMap((m) =>
+    (m.rascunhos || []).filter((r) => r.status === 'pendente').map((r) => ({ mensagemId: m.id, rascunho: r }))
+  );
 
 export default function AssistenteScreen() {
   const { chamada, marcarPresenca } = useChamada();
@@ -29,27 +50,140 @@ export default function AssistenteScreen() {
   const [mensagens, setMensagens] = useState([]);
   const [texto, setTexto] = useState('');
   const [carregando, setCarregando] = useState(false);
+  const [permissaoLocal, setPermissaoLocal] = useState('granted');
+  const [avisoLocalFechado, setAvisoLocalFechado] = useState(false);
+  const [filaEnvio, setFilaEnvio] = useState([]);
+  const [voltouDoWhatsApp, setVoltouDoWhatsApp] = useState(false);
   const conversaIdRef = useRef(null);
   const listaRef = useRef(null);
+  const mensagensRef = useRef(mensagens);
+  mensagensRef.current = mensagens;
   const contextoRef = useRef(null);
-  contextoRef.current = { chamada, mensalidades, pagamentos };
+  contextoRef.current = {
+    chamada,
+    mensalidades,
+    pagamentos,
+    nomeMotorista: obterSessao()?.nomeUsuario,
+  };
+
+  const leitura = useLeituraEmVoz();
+
+  useEffect(() => {
+    statusPermissaoLocalizacao().then(setPermissaoLocal);
+  }, []);
+
+  useEffect(() => {
+    const assinatura = AppState.addEventListener('change', (estado) => {
+      if (estado === 'active') setVoltouDoWhatsApp(true);
+    });
+    return () => assinatura.remove();
+  }, []);
 
   const palavrasEsperadas = useMemo(
     () => (chamada?.alunos || []).flatMap((a) => [a.nome, primeiroNome(a.nome)]),
     [chamada?.alunos]
   );
 
-  const totalPresentes = chamada ? Object.values(chamada.presencas).filter(Boolean).length : 0;
+  const contagem = chamada ? contarPresencas(chamada.presencas) : null;
+  const pendentes = rascunhosPendentes(mensagens);
+  const pendentesIds = new Set(pendentes.map((p) => p.rascunho.id));
+  const proximoDaFila = voltouDoWhatsApp ? filaEnvio.find((id) => pendentesIds.has(id)) : null;
+  const restantesNaFila = filaEnvio.filter((id) => pendentesIds.has(id)).length;
 
-  /** A API já gravou no banco; aqui só refletimos na chamada aberta, guardando o valor anterior para desfazer. */
-  const aplicarAcoes = (acoes) => {
+  const adicionar = (...novas) => setMensagens((prev) => [...prev, ...novas]);
+
+  const responderLocal = (resposta) => {
+    adicionar(novaMensagem({ autor: 'ia', texto: resposta, local: true }));
+    leitura.falar(resposta);
+  };
+
+  const atualizarRascunho = (mensagemId, rascunhoId, dados) =>
+    setMensagens((prev) =>
+      prev.map((m) =>
+        m.id === mensagemId
+          ? { ...m, rascunhos: m.rascunhos.map((r) => (r.id === rascunhoId ? { ...r, ...dados } : r)) }
+          : m
+      )
+    );
+
+  /** Abre o WhatsApp com o texto pronto. O envio de fato é o motorista quem faz, lá dentro. */
+  const abrirWhatsApp = async (mensagemId, rascunho) => {
+    const link = montarLinkWhatsApp(rascunho.acao.telefone, rascunho.mensagem);
+    if (!link) {
+      Alert.alert('Telefone inválido', `O telefone de ${rascunho.acao.responsavelNome} não é válido.`);
+      return false;
+    }
+    try {
+      setVoltouDoWhatsApp(false);
+      await Linking.openURL(link);
+      atualizarRascunho(mensagemId, rascunho.id, { status: 'aberto' });
+      return true;
+    } catch {
+      Alert.alert('WhatsApp indisponível', 'Não consegui abrir o WhatsApp neste celular.');
+      return false;
+    }
+  };
+
+  /** Abre o próximo rascunho pendente e deixa os demais na fila (um por vez). */
+  const enviarProximo = async (lista = rascunhosPendentes(mensagensRef.current)) => {
+    const [primeiro, ...resto] = lista;
+    if (!primeiro) return;
+    setFilaEnvio(resto.map((p) => p.rascunho.id));
+    await abrirWhatsApp(primeiro.mensagemId, primeiro.rascunho);
+  };
+
+  const enviarTodas = (mensagemId) =>
+    enviarProximo(rascunhosPendentes(mensagensRef.current).filter((p) => p.mensagemId === mensagemId));
+
+  const abrirProximoDaFila = () => {
+    const lista = rascunhosPendentes(mensagensRef.current);
+    enviarProximo(filaEnvio.map((id) => lista.find((p) => p.rascunho.id === id)).filter(Boolean));
+  };
+
+  const descartarPendentes = () => {
+    const ids = new Set(rascunhosPendentes(mensagensRef.current).map((p) => p.rascunho.id));
+    setMensagens((prev) =>
+      prev.map((m) =>
+        m.rascunhos
+          ? { ...m, rascunhos: m.rascunhos.map((r) => (ids.has(r.id) ? { ...r, status: 'descartado' } : r)) }
+          : m
+      )
+    );
+    setFilaEnvio([]);
+    return ids.size;
+  };
+
+  /** "pode mandar" / "cancela" logo depois de um rascunho: resolvido no app, sem ir para a IA. */
+  const tratarConfirmacao = (falado) => {
+    const lista = rascunhosPendentes(mensagensRef.current);
+    if (!lista.length) return false;
+    const decisao = interpretarConfirmacao(falado);
+    if (!decisao) return false;
+
+    if (decisao === 'DESCARTAR') {
+      const total = descartarPendentes();
+      responderLocal(total === 1 ? 'Ok, descartei a mensagem.' : `Ok, descartei ${total} mensagens.`);
+      return true;
+    }
+    const [{ rascunho }] = lista;
+    const restantes = lista.length - 1;
+    responderLocal(
+      `Abrindo o WhatsApp para ${primeiroNome(rascunho.acao.responsavelNome)}. Confira e toque em enviar lá.` +
+        (restantes ? ` Depois volte aqui para a próxima (${restantes === 1 ? 'falta 1' : `faltam ${restantes}`}).` : '')
+    );
+    setTimeout(() => enviarProximo(lista), 1200);
+    return true;
+  };
+
+  /** A API já gravou na core-api; aqui só refletimos na chamada aberta, guardando o status anterior para desfazer. */
+  const aplicarPresencas = (acoes) => {
     const chamadaAtual = contextoRef.current.chamada;
     if (!chamadaAtual) return [];
     return acoes
       .filter((a) => a.tipo === 'MARCAR_PRESENCA' && a.alunoId in chamadaAtual.presencas)
       .map((a) => {
-        const anterior = Boolean(chamadaAtual.presencas[a.alunoId]);
-        marcarPresenca(a.alunoId, a.status === 'PRESENTE');
+        const anterior = chamadaAtual.presencas[a.alunoId];
+        marcarPresenca(a.alunoId, a.status, { sincronizar: false });
         return { ...a, anterior };
       });
   };
@@ -58,31 +192,34 @@ export default function AssistenteScreen() {
     const limpo = conteudo.trim();
     if (!limpo || carregando) return;
     setTexto('');
-    setMensagens((prev) => [...prev, novaMensagem({ autor: 'motorista', texto: limpo, origem })]);
+    adicionar(novaMensagem({ autor: 'motorista', texto: limpo, origem }));
+    if (tratarConfirmacao(limpo)) return;
     setCarregando(true);
 
     const itinerarioId = contextoRef.current.chamada?.itinerarioId ?? null;
     try {
+      const localizacao = await obterLocalizacaoRapida();
       const resposta = await enviarMensagem(
-        { conversaId: conversaIdRef.current, texto: limpo, itinerarioId },
+        { conversaId: conversaIdRef.current, texto: limpo, itinerarioId, localizacao },
         contextoRef.current
       );
       conversaIdRef.current = resposta.conversaId;
-      const acoes = aplicarAcoes(resposta.acoes);
-      setMensagens((prev) => [
-        ...prev,
-        novaMensagem({ autor: 'ia', texto: resposta.resposta, acoes, itinerarioId }),
-      ]);
+      const presencas = aplicarPresencas(resposta.acoes);
+      const rascunhos = resposta.acoes
+        .filter((a) => a.tipo === 'ENVIAR_MENSAGEM_RESPONSAVEL')
+        .map((acao) => ({ id: novoId(), acao, mensagem: acao.mensagem || '', status: 'pendente' }));
+      const postos = resposta.acoes.filter((a) => a.tipo === 'SUGERIR_POSTOS');
+      adicionar(
+        novaMensagem({ autor: 'ia', texto: resposta.resposta, acoes: presencas, rascunhos, postos, itinerarioId })
+      );
+      leitura.falar(resposta.resposta);
     } catch (error) {
       console.warn('[ia]', error.message);
-      setMensagens((prev) => [
-        ...prev,
-        novaMensagem({
-          autor: 'ia',
-          texto: 'Não consegui falar com o assistente agora. Tente de novo em instantes.',
-          erro: true,
-        }),
-      ]);
+      const textoErro =
+        error.status === 401
+          ? 'Sua sessão expirou. Entre novamente para usar o assistente.'
+          : 'Não consegui falar com o assistente agora. Tente de novo em instantes.';
+      adicionar(novaMensagem({ autor: 'ia', texto: textoErro, erro: true }));
     } finally {
       setCarregando(false);
     }
@@ -95,102 +232,148 @@ export default function AssistenteScreen() {
 
   const alternarMicrofone = () => {
     Keyboard.dismiss();
-    if (voz.ouvindo) voz.parar();
-    else voz.iniciar();
+    if (voz.ouvindo) {
+      voz.parar();
+      return;
+    }
+    leitura.parar();
+    voz.iniciar();
   };
 
-  const desfazer = (mensagem) => {
-    console.log(
-      '[mock] desfazer presenças',
-      mensagem.acoes.map((a) => ({ alunoId: a.alunoId, status: a.anterior ? 'PRESENTE' : 'AUSENTE' }))
-    );
-    mensagem.acoes.forEach((a) => marcarPresenca(a.alunoId, a.anterior));
-    setMensagens((prev) => prev.map((m) => (m.id === mensagem.id ? { ...m, desfeito: true } : m)));
+  const desfazer = async (mensagem) => {
+    try {
+      await Promise.all(mensagem.acoes.map((a) => marcarPresenca(a.alunoId, a.anterior)));
+      setMensagens((prev) => prev.map((m) => (m.id === mensagem.id ? { ...m, desfeito: true } : m)));
+    } catch (error) {
+      Alert.alert('Não foi possível desfazer', error.message);
+    }
+  };
+
+  const permitirLocalizacao = async () => {
+    setPermissaoLocal(await pedirPermissaoLocalizacao());
+    setAvisoLocalFechado(true);
   };
 
   const novaConversa = () => {
     voz.parar();
+    leitura.parar();
     conversaIdRef.current = null;
     setMensagens([]);
+    setFilaEnvio([]);
     setTexto('');
   };
 
   const sugestoes = chamada
     ? [
         ...(chamada.alunos[0] ? [`${primeiroNome(chamada.alunos[0].nome)} entrou na van`] : []),
-        'Quem ainda falta embarcar?',
-        'Como está meu financeiro este mês?',
+        'Tô parado no trânsito',
+        'Onde tem gasolina mais barata?',
       ]
-    : ['Como está meu financeiro este mês?', 'Como foi o mês passado?', 'Quem ainda não pagou?'];
+    : ['Como está meu financeiro este mês?', 'Onde tem gasolina mais barata?', 'Quem ainda não pagou?'];
 
   const temTexto = texto.trim().length > 0;
   const ocupado = carregando && !voz.ouvindo;
 
-  const renderMensagem = ({ item }) => {
-    const doMotorista = item.autor === 'motorista';
+  const renderPresencas = (item) => {
     const podeDesfazer = !item.desfeito && chamada?.itinerarioId === item.itinerarioId;
-
     return (
-      <View style={[styles.linha, doMotorista && styles.linhaMotorista]}>
-        {doMotorista ? null : (
-          <View style={styles.avatar}>
-            <Ionicons name="sparkles" size={14} color={colors.primary} />
-          </View>
-        )}
-        <View
-          style={[
-            styles.balao,
-            doMotorista ? styles.balaoMotorista : styles.balaoIA,
-            item.erro && styles.balaoErro,
-          ]}
-        >
-          {doMotorista && item.origem === 'voz' ? (
-            <View style={styles.origem}>
-              <Ionicons name="mic" size={11} color={colors.primarySoft} />
-              <Text style={styles.origemTexto}>Por voz</Text>
-            </View>
-          ) : null}
-          <Text style={[styles.textoBalao, doMotorista && styles.textoMotorista]}>{item.texto}</Text>
-
-          {item.acoes?.length ? (
-            <View style={styles.acoes}>
-              <View style={styles.acoesLista}>
-                {item.acoes.map((acao) => {
-                  const presente = acao.status === 'PRESENTE';
-                  return (
-                    <View
-                      key={acao.alunoId}
-                      style={[
-                        styles.acao,
-                        presente ? styles.acaoPresente : styles.acaoAusente,
-                        item.desfeito && styles.acaoDesfeita,
-                      ]}
-                    >
-                      <Ionicons
-                        name={presente ? 'checkmark-circle' : 'close-circle'}
-                        size={14}
-                        color={presente ? colors.success : colors.error}
-                      />
-                      <Text style={styles.acaoTexto}>
-                        {primeiroNome(acao.nomeAluno)} · {presente ? 'Presente' : 'Ausente'}
-                      </Text>
-                    </View>
-                  );
-                })}
+      <View style={styles.acoes}>
+        <View style={styles.acoesLista}>
+          {item.acoes.map((acao) => {
+            const info = infoPresenca(acao.status);
+            return (
+              <View
+                key={acao.alunoId}
+                style={[styles.acao, { backgroundColor: info.fundo }, item.desfeito && styles.acaoDesfeita]}
+              >
+                <Ionicons name={info.icone} size={14} color={info.cor} />
+                <Text style={styles.acaoTexto}>
+                  {primeiroNome(acao.nomeAluno)} · {info.rotulo}
+                </Text>
               </View>
-              {item.desfeito ? (
-                <Text style={styles.desfeito}>Desfeito</Text>
-              ) : podeDesfazer ? (
-                <TouchableOpacity onPress={() => desfazer(item)} hitSlop={8}>
-                  <Text style={styles.desfazer}>Desfazer</Text>
-                </TouchableOpacity>
-              ) : null}
-            </View>
-          ) : null}
+            );
+          })}
         </View>
+        {item.desfeito ? (
+          <Text style={styles.desfeito}>Desfeito</Text>
+        ) : podeDesfazer ? (
+          <TouchableOpacity onPress={() => desfazer(item)} hitSlop={8}>
+            <Text style={styles.desfazer}>Desfazer</Text>
+          </TouchableOpacity>
+        ) : null}
       </View>
     );
   };
+
+  const renderRascunhos = (item) => {
+    const pendentesDaMensagem = item.rascunhos.filter((r) => r.status === 'pendente').length;
+    return (
+      <View style={styles.cartoes}>
+        {item.rascunhos.map((rascunho) => (
+          <CartaoMensagem
+            key={rascunho.id}
+            rascunho={rascunho}
+            onEnviar={() => {
+              setFilaEnvio([]);
+              abrirWhatsApp(item.id, rascunho);
+            }}
+            onSalvarEdicao={(mensagem) => atualizarRascunho(item.id, rascunho.id, { mensagem })}
+            onDescartar={() => atualizarRascunho(item.id, rascunho.id, { status: 'descartado' })}
+          />
+        ))}
+        {pendentesDaMensagem > 1 ? (
+          <TouchableOpacity style={styles.enviarTodas} onPress={() => enviarTodas(item.id)}>
+            <Ionicons name="logo-whatsapp" size={16} color={colors.white} />
+            <Text style={styles.enviarTodasTexto}>Enviar todas ({pendentesDaMensagem}), uma por vez</Text>
+          </TouchableOpacity>
+        ) : null}
+        <Text style={styles.avisoEnvio}>
+          Nada é enviado automaticamente: o WhatsApp abre com o texto pronto e você confirma o envio lá.
+        </Text>
+      </View>
+    );
+  };
+
+  const renderMensagem = ({ item }) => {
+    const doMotorista = item.autor === 'motorista';
+    const temCartoes = item.rascunhos?.length || item.postos?.length;
+
+    return (
+      <View style={styles.bloco}>
+        <View style={[styles.linha, doMotorista && styles.linhaMotorista]}>
+          {doMotorista ? null : (
+            <View style={styles.avatar}>
+              <Ionicons name="sparkles" size={14} color={colors.primary} />
+            </View>
+          )}
+          <View
+            style={[
+              styles.balao,
+              doMotorista ? styles.balaoMotorista : styles.balaoIA,
+              item.erro && styles.balaoErro,
+            ]}
+          >
+            {doMotorista && item.origem === 'voz' ? (
+              <View style={styles.origem}>
+                <Ionicons name="mic" size={11} color={colors.primarySoft} />
+                <Text style={styles.origemTexto}>Por voz</Text>
+              </View>
+            ) : null}
+            <Text style={[styles.textoBalao, doMotorista && styles.textoMotorista]}>{item.texto}</Text>
+            {item.acoes?.length ? renderPresencas(item) : null}
+          </View>
+        </View>
+        {temCartoes ? (
+          <View style={styles.cartoesRecuo}>
+            {item.rascunhos?.length ? renderRascunhos(item) : null}
+            {item.postos?.map((acao, indice) => <CartaoPostos key={indice} acao={acao} />)}
+          </View>
+        ) : null}
+      </View>
+    );
+  };
+
+  const mostrarAvisoLocal = permissaoLocal === 'undetermined' && !avisoLocalFechado;
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -200,16 +383,27 @@ export default function AssistenteScreen() {
             eyebrow="Assistente SafeWay"
             title="Fale com a IA"
             right={
-              mensagens.length ? (
-                <TouchableOpacity
-                  style={styles.novaConversa}
-                  onPress={novaConversa}
-                  accessibilityLabel="Nova conversa"
-                >
-                  <Ionicons name="add" size={18} color={colors.primary} />
-                  <Text style={styles.novaConversaTexto}>Nova</Text>
-                </TouchableOpacity>
-              ) : null
+              <View style={styles.topoAcoes}>
+                {leitura.disponivel ? (
+                  <TouchableOpacity
+                    style={styles.botaoTopo}
+                    onPress={leitura.alternarSilencio}
+                    accessibilityLabel={leitura.silenciado ? 'Ativar leitura em voz alta' : 'Silenciar leitura em voz alta'}
+                  >
+                    <Ionicons
+                      name={leitura.silenciado ? 'volume-mute' : 'volume-high'}
+                      size={18}
+                      color={colors.primary}
+                    />
+                  </TouchableOpacity>
+                ) : null}
+                {mensagens.length ? (
+                  <TouchableOpacity style={styles.novaConversa} onPress={novaConversa} accessibilityLabel="Nova conversa">
+                    <Ionicons name="add" size={18} color={colors.primary} />
+                    <Text style={styles.novaConversaTexto}>Nova</Text>
+                  </TouchableOpacity>
+                ) : null}
+              </View>
             }
           />
           <View style={[styles.rota, chamada && styles.rotaAtiva]}>
@@ -220,10 +414,31 @@ export default function AssistenteScreen() {
             />
             <Text style={styles.rotaTexto} numberOfLines={2}>
               {chamada
-                ? `${chamada.nomeItinerario} em andamento · ${totalPresentes}/${chamada.alunos.length} presentes`
+                ? `${chamada.nomeItinerario} em andamento · ${contagem.aBordo}/${contagem.total} na van` +
+                  (contagem.entregues ? ` · ${contagem.entregues} entregues` : '')
                 : 'Nenhuma rota em andamento. Inicie uma rota para registrar presenças por voz.'}
             </Text>
           </View>
+          {mostrarAvisoLocal ? (
+            <View style={styles.avisoLocal}>
+              <Ionicons name="location-outline" size={18} color={colors.info} />
+              <View style={styles.flex}>
+                <Text style={styles.avisoLocalTexto}>
+                  Permita a localização para o assistente incluir onde você está nos avisos de atraso aos
+                  responsáveis e encontrar postos perto de você. Ela só é usada quando você fala com o
+                  assistente.
+                </Text>
+                <View style={styles.avisoLocalBotoes}>
+                  <TouchableOpacity onPress={permitirLocalizacao} hitSlop={6}>
+                    <Text style={styles.avisoLocalPermitir}>Permitir</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => setAvisoLocalFechado(true)} hitSlop={6}>
+                    <Text style={styles.avisoLocalAgoraNao}>Agora não</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+          ) : null}
         </View>
 
         <FlatList
@@ -243,8 +458,8 @@ export default function AssistenteScreen() {
               </View>
               <Text style={styles.vazioTitulo}>Fale ou digite o que precisa</Text>
               <Text style={styles.vazioTexto}>
-                Toque no microfone e diga, por exemplo, quem entrou na van ou pergunte sobre o seu
-                financeiro.
+                Toque no microfone e diga quem entrou na van ou foi entregue, avise que está no trânsito,
+                procure um posto ou pergunte sobre o seu financeiro.
               </Text>
               <View style={styles.sugestoes}>
                 {sugestoes.map((sugestao) => (
@@ -277,11 +492,27 @@ export default function AssistenteScreen() {
           }
         />
 
+        {proximoDaFila ? (
+          <View style={styles.fila}>
+            <Ionicons name="logo-whatsapp" size={18} color={colors.whatsapp} />
+            <Text style={styles.filaTexto} numberOfLines={2}>
+              {restantesNaFila === 1 ? 'Falta 1 mensagem' : `Faltam ${restantesNaFila} mensagens`}. Diga "pode
+              mandar" ou toque para abrir a próxima.
+            </Text>
+            <TouchableOpacity style={styles.filaAbrir} onPress={abrirProximoDaFila}>
+              <Text style={styles.filaAbrirTexto}>Abrir</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => setFilaEnvio([])} hitSlop={8} accessibilityLabel="Parar envio">
+              <Ionicons name="close" size={20} color={colors.textMuted} />
+            </TouchableOpacity>
+          </View>
+        ) : null}
+
         {voz.ouvindo ? (
           <View style={styles.ouvindo}>
             <View style={styles.ouvindoPonto} />
             <Text style={styles.ouvindoTexto} numberOfLines={3}>
-              {voz.textoParcial || 'Ouvindo… pode falar'}
+              {voz.textoParcial || (pendentes.length ? 'Ouvindo… diga "pode mandar" ou "cancela"' : 'Ouvindo… pode falar')}
             </Text>
           </View>
         ) : null}
@@ -324,6 +555,17 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
   flex: { flex: 1 },
   topo: { paddingHorizontal: 20, paddingTop: 8 },
+  topoAcoes: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  botaoTopo: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    borderWidth: 1,
+    borderColor: colors.primaryBorder,
+    backgroundColor: colors.primarySoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   novaConversa: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -349,10 +591,23 @@ const styles = StyleSheet.create({
     marginTop: -6,
     marginBottom: 8,
   },
-  rotaAtiva: { backgroundColor: '#F4FBF4', borderColor: colors.successBg },
+  rotaAtiva: { backgroundColor: colors.successSoft, borderColor: colors.successBg },
   rotaTexto: { flex: 1, fontSize: 13, color: colors.textSecondary },
+  avisoLocal: {
+    flexDirection: 'row',
+    gap: 8,
+    backgroundColor: colors.infoBg,
+    borderRadius: 14,
+    padding: 12,
+    marginBottom: 8,
+  },
+  avisoLocalTexto: { fontSize: 13, lineHeight: 18, color: colors.text },
+  avisoLocalBotoes: { flexDirection: 'row', gap: 20, marginTop: 8 },
+  avisoLocalPermitir: { fontSize: 13, fontWeight: '700', color: colors.info },
+  avisoLocalAgoraNao: { fontSize: 13, fontWeight: '600', color: colors.textSecondary },
   lista: { paddingHorizontal: 20, paddingVertical: 12, flexGrow: 1 },
-  linha: { flexDirection: 'row', alignItems: 'flex-end', gap: 8, marginBottom: 12 },
+  bloco: { marginBottom: 12 },
+  linha: { flexDirection: 'row', alignItems: 'flex-end', gap: 8 },
   linhaMotorista: { justifyContent: 'flex-end' },
   avatar: {
     width: 28,
@@ -391,12 +646,23 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 4,
   },
-  acaoPresente: { backgroundColor: colors.successBg },
-  acaoAusente: { backgroundColor: colors.errorBg },
   acaoDesfeita: { opacity: 0.45 },
   acaoTexto: { fontSize: 12, fontWeight: '600', color: colors.text },
   desfazer: { fontSize: 13, fontWeight: '700', color: colors.primary },
   desfeito: { fontSize: 12, color: colors.textMuted, fontStyle: 'italic' },
+  cartoesRecuo: { marginTop: 8, marginLeft: 36, gap: 8 },
+  cartoes: { gap: 8 },
+  enviarTodas: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    minHeight: 42,
+    borderRadius: 12,
+    backgroundColor: colors.whatsapp,
+  },
+  enviarTodasTexto: { color: colors.white, fontWeight: '700', fontSize: 14 },
+  avisoEnvio: { fontSize: 12, lineHeight: 17, color: colors.textMuted },
   pensando: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   pensandoTexto: { fontSize: 14, color: colors.textSecondary },
   vazio: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 24 },
@@ -429,6 +695,27 @@ const styles = StyleSheet.create({
   },
   sugestaoTexto: { fontSize: 14, color: colors.text, textAlign: 'center' },
   aviso: { marginTop: 16, fontSize: 12, color: colors.textMuted, textAlign: 'center' },
+  fila: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginHorizontal: 20,
+    marginBottom: 8,
+    backgroundColor: colors.successSoft,
+    borderWidth: 1,
+    borderColor: colors.successBg,
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  filaTexto: { flex: 1, fontSize: 13, color: colors.text },
+  filaAbrir: {
+    backgroundColor: colors.whatsapp,
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+  },
+  filaAbrirTexto: { color: colors.white, fontWeight: '700', fontSize: 13 },
   ouvindo: {
     flexDirection: 'row',
     alignItems: 'center',

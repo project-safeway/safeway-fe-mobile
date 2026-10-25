@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Card } from '../../components/Card';
 import { colors } from '../../constants/colors';
 import { mockMotorista } from '../../data/mock';
+import { obterSessao } from '../../services/sessao';
 
 const modules = [
   {
@@ -37,7 +38,9 @@ export default function HomeScreen() {
         <View style={styles.header}>
           <View style={styles.headerText}>
             <Text style={styles.eyebrow}>SafeWay</Text>
-            <Text style={styles.greeting}>Olá, {mockMotorista.nome.split(' ')[0]}</Text>
+            <Text style={styles.greeting}>
+              Olá, {(obterSessao()?.nomeUsuario || mockMotorista.nome).split(' ')[0]}
+            </Text>
             <Text style={styles.subtitle}>Sistema de Transporte Escolar</Text>
           </View>
           <TouchableOpacity

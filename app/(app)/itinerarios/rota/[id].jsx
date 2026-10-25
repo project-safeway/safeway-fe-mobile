@@ -1,67 +1,105 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, StyleSheet, FlatList, Switch, TouchableOpacity, Alert } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  FlatList,
+  TouchableOpacity,
+  Alert,
+  ActivityIndicator,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import MapView, { Marker, Polyline } from 'react-native-maps';
+import Constants from 'expo-constants';
 import * as Location from 'expo-location';
 import { useLocalSearchParams, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Button } from '../../../../components/Button';
 import { colors } from '../../../../constants/colors';
-import {
-  mockItinerarios,
-  mockAlunosDetalhe,
-  mockEscolasComAlunos,
-  mockRotas,
-} from '../../../../data/mock';
+import { mockAlunosDetalhe, mockEscolasComAlunos, mockRotas } from '../../../../data/mock';
 import { buildTrajeto } from '../../../../utils/trajeto';
+import { STATUS_PRESENCA_INFO } from '../../../../utils/presenca';
 import { buscarCaminhoPelasRuas } from '../../../../services/rotas';
-import { useChamada } from '../../../../contexts/ChamadaContext';
+import { usandoMockCore } from '../../../../services/api';
+import { buscarItinerario, buscarLocalizacoesDosAlunos } from '../../../../services/chamada';
+import { contarPresencas, useChamada } from '../../../../contexts/ChamadaContext';
 
 const SAO_PAULO = { latitude: -23.5613, longitude: -46.6565, latitudeDelta: 0.06, longitudeDelta: 0.06 };
+const OPCOES_STATUS = ['PRESENTE', 'AUSENTE', 'ENTREGUE'];
+// Sem GOOGLE_MAPS_API_KEY no build, o mapa nativo do Android quebra ao inserir os marcadores.
+const MAPA_DISPONIVEL = Boolean(Constants.expoConfig?.extra?.googleMaps?.apiKey);
 
-function enderecoDaParada(parada) {
-  if (parada.tipo === 'aluno') {
-    return mockAlunosDetalhe[parada.id]?.responsaveis?.[0]?.endereco;
-  }
-  return mockEscolasComAlunos.find((item) => item.escola.id === parada.id)?.escola.endereco;
-}
+const formatarEndereco = (e) => (e ? `${e.logradouro}, ${e.numero} - ${e.bairro}` : null);
 
-function coordenada(endereco) {
-  const latitude = parseFloat(endereco?.latitude);
-  const longitude = parseFloat(endereco?.longitude);
+function coordenada(origem) {
+  const latitude = parseFloat(origem?.latitude);
+  const longitude = parseFloat(origem?.longitude);
   if (isNaN(latitude) || isNaN(longitude)) return null;
   return { latitude, longitude };
+}
+
+/** Endereço e coordenada de cada parada: dos mocks, ou de GET /itinerarios/{id}/alunos com a core-api. */
+function localDaParada(parada, localizacoes) {
+  if (localizacoes) {
+    const local = parada.tipo === 'aluno' ? localizacoes[String(parada.id)] : null;
+    return { endereco: local?.enderecoCompleto ?? null, coordenada: coordenada(local) };
+  }
+  const endereco =
+    parada.tipo === 'aluno'
+      ? mockAlunosDetalhe[parada.id]?.responsaveis?.[0]?.endereco
+      : mockEscolasComAlunos.find((item) => item.escola.id === parada.id)?.escola.endereco;
+  return { endereco: formatarEndereco(endereco), coordenada: coordenada(endereco) };
 }
 
 export default function RotaScreen() {
   const { id } = useLocalSearchParams();
   const mapRef = useRef(null);
-  const itinerario = useMemo(
-    () => mockItinerarios.find((i) => String(i.id) === String(id)) || mockItinerarios[0],
-    [id]
-  );
+  const [itinerario, setItinerario] = useState(null);
+  const [localizacoes, setLocalizacoes] = useState(null);
+  const [erroCarregar, setErroCarregar] = useState(null);
+  const [tentativa, setTentativa] = useState(0);
   const [localizacaoPermitida, setLocalizacaoPermitida] = useState(false);
   const [caminho, setCaminho] = useState(null);
+  const [encerrando, setEncerrando] = useState(false);
+  const { chamada, iniciarChamada, marcarPresenca, encerrarChamada } = useChamada();
+
+  useEffect(() => {
+    let ativo = true;
+    setErroCarregar(null);
+    (async () => {
+      try {
+        const encontrado = await buscarItinerario(id);
+        const locais = usandoMockCore()
+          ? null
+          : await buscarLocalizacoesDosAlunos(encontrado.id).catch((error) => {
+              console.warn('[rota] localizações dos alunos indisponíveis:', error.message);
+              return [];
+            });
+        await iniciarChamada(encontrado);
+        if (!ativo) return;
+        setLocalizacoes(locais && Object.fromEntries(locais.map((l) => [String(l.alunoId), l])));
+        setItinerario(encontrado);
+      } catch (error) {
+        if (ativo) setErroCarregar(error.message);
+      }
+    })();
+    return () => {
+      ativo = false;
+    };
+  }, [id, iniciarChamada, tentativa]);
 
   const paradas = useMemo(
-    () =>
-      buildTrajeto(itinerario).map((parada) => {
-        const endereco = enderecoDaParada(parada);
-        return {
-          ...parada,
-          endereco: endereco ? `${endereco.logradouro}, ${endereco.numero} - ${endereco.bairro}` : null,
-          coordenada: coordenada(endereco),
-        };
-      }),
-    [itinerario]
+    () => (itinerario ? buildTrajeto(itinerario).map((p) => ({ ...p, ...localDaParada(p, localizacoes) })) : []),
+    [itinerario, localizacoes]
   );
   const pontosMapa = useMemo(() => paradas.filter((p) => p.coordenada), [paradas]);
 
   const resumo = caminho
     ? { distanciaTotal: caminho.distanciaMetros, tempoTotal: caminho.duracaoSegundos }
-    : mockRotas[itinerario.id];
+    : itinerario && mockRotas[itinerario.id];
 
   useEffect(() => {
+    if (!pontosMapa.length) return undefined;
     let ativo = true;
 
     (async () => {
@@ -97,15 +135,9 @@ export default function RotaScreen() {
     };
   }, [pontosMapa]);
 
-  const { chamada, iniciarChamada, marcarPresenca, encerrarChamada } = useChamada();
-
-  useEffect(() => {
-    iniciarChamada(itinerario);
-  }, [itinerario, iniciarChamada]);
-
-  const presencas = chamada?.itinerarioId === itinerario.id ? chamada.presencas : {};
-  const totalAlunos = paradas.filter((p) => p.tipo === 'aluno').length;
-  const totalPresentes = Object.values(presencas).filter(Boolean).length;
+  const chamadaDaTela = itinerario && chamada && String(chamada.itinerarioId) === String(itinerario.id);
+  const presencas = chamadaDaTela ? chamada.presencas : {};
+  const contagem = contarPresencas(presencas);
 
   const linhaRota = caminho?.coordenadas ?? pontosMapa.map((p) => p.coordenada);
 
@@ -121,20 +153,37 @@ export default function RotaScreen() {
     if (caminho) enquadrarMapa(true);
   }, [caminho]);
 
+  const alterarPresenca = async (aluno, status) => {
+    try {
+      await marcarPresenca(aluno.id, status);
+    } catch (error) {
+      Alert.alert('Presença não registrada', `Não consegui salvar a presença de ${aluno.nome}: ${error.message}`);
+    }
+  };
+
+  const encerrar = async (status) => {
+    setEncerrando(true);
+    try {
+      await encerrarChamada(status);
+      return true;
+    } catch (error) {
+      Alert.alert('Não foi possível encerrar a chamada', error.message);
+      return false;
+    } finally {
+      setEncerrando(false);
+    }
+  };
+
   const finalizar = () => {
-    const payload = Object.fromEntries(
-      Object.entries(presencas).map(([alunoId, presente]) => [alunoId, presente ? 'PRESENTE' : 'AUSENTE'])
-    );
     Alert.alert(
       'Finalizar rota',
-      `Presentes: ${totalPresentes} | Ausentes: ${totalAlunos - totalPresentes}\n\nDeseja finalizar a chamada?`,
+      `Presentes: ${contagem.aBordo} | Entregues: ${contagem.entregues} | Ausentes: ${contagem.ausentes}\n\nDeseja finalizar a chamada?`,
       [
         { text: 'Voltar', style: 'cancel' },
         {
           text: 'Sim, finalizar',
-          onPress: () => {
-            console.log('[mock] registrarPresenca', payload, '→ FINALIZADA');
-            encerrarChamada();
+          onPress: async () => {
+            if (!(await encerrar('FINALIZADA'))) return;
             Alert.alert('Chamada finalizada', 'Presenças registradas com sucesso!', [
               { text: 'OK', onPress: () => router.back() },
             ]);
@@ -150,10 +199,8 @@ export default function RotaScreen() {
       {
         text: 'Sim, cancelar',
         style: 'destructive',
-        onPress: () => {
-          console.log('[mock] alterarStatusChamada → CANCELADA');
-          encerrarChamada();
-          router.back();
+        onPress: async () => {
+          if (await encerrar('CANCELADA')) router.back();
         },
       },
     ]);
@@ -161,73 +208,108 @@ export default function RotaScreen() {
 
   const renderParada = ({ item, index }) => {
     const isEscola = item.tipo === 'escola';
-    const presente = Boolean(presencas[item.id]);
+    const statusAtual = presencas[item.id] ?? 'AUSENTE';
     return (
       <View style={[styles.parada, isEscola && styles.paradaEscola]}>
-        <View style={[styles.ordem, isEscola ? styles.ordemEscola : styles.ordemAluno]}>
-          {isEscola ? (
-            <Ionicons name="school" size={16} color={colors.white} />
-          ) : (
-            <Text style={styles.ordemText}>{index + 1}</Text>
-          )}
-        </View>
-        <View style={styles.paradaInfo}>
-          <Text style={[styles.paradaNome, isEscola && styles.paradaNomeEscola]} numberOfLines={1}>
-            {item.nome}
-          </Text>
-          <Text style={styles.paradaMeta} numberOfLines={1}>
-            {isEscola ? item.endereco || item.cidade : item.escola}
-          </Text>
+        <View style={styles.paradaTopo}>
+          <View style={[styles.ordem, isEscola ? styles.ordemEscola : styles.ordemAluno]}>
+            {isEscola ? (
+              <Ionicons name="school" size={16} color={colors.white} />
+            ) : (
+              <Text style={styles.ordemText}>{index + 1}</Text>
+            )}
+          </View>
+          <View style={styles.paradaInfo}>
+            <Text style={[styles.paradaNome, isEscola && styles.paradaNomeEscola]} numberOfLines={1}>
+              {item.nome}
+            </Text>
+            <Text style={styles.paradaMeta} numberOfLines={1}>
+              {isEscola ? item.endereco || item.cidade : item.escola}
+            </Text>
+          </View>
         </View>
         {isEscola ? null : (
-          <View style={styles.presenca}>
-            <Text style={[styles.presencaLabel, presente ? styles.presente : styles.ausente]}>
-              {presente ? 'Presente' : 'Ausente'}
-            </Text>
-            <Switch
-              value={presente}
-              onValueChange={(v) => marcarPresenca(item.id, v)}
-              trackColor={{ false: colors.border, true: colors.successAlt }}
-              thumbColor={colors.white}
-              accessibilityLabel={`Presença de ${item.nome}`}
-            />
+          <View style={styles.statusLinha} accessibilityRole="radiogroup">
+            {OPCOES_STATUS.map((status) => {
+              const info = STATUS_PRESENCA_INFO[status];
+              const ativo = statusAtual === status;
+              return (
+                <TouchableOpacity
+                  key={status}
+                  style={[styles.statusBtn, ativo && { backgroundColor: info.fundo, borderColor: info.cor }]}
+                  onPress={() => !ativo && alterarPresenca(item, status)}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected: ativo }}
+                  accessibilityLabel={`${info.rotulo}: ${item.nome}`}
+                >
+                  <Ionicons name={info.icone} size={14} color={ativo ? info.cor : colors.textMuted} />
+                  <Text style={[styles.statusTexto, ativo && { color: info.cor }]}>{info.rotulo}</Text>
+                </TouchableOpacity>
+              );
+            })}
           </View>
         )}
       </View>
     );
   };
 
+  if (!itinerario) {
+    return (
+      <SafeAreaView style={[styles.safe, styles.centro]} edges={['top', 'bottom']}>
+        {erroCarregar ? (
+          <>
+            <Text style={styles.erroTexto}>Não foi possível iniciar a rota: {erroCarregar}</Text>
+            <Button title="Tentar de novo" onPress={() => setTentativa((t) => t + 1)} style={styles.erroBtn} />
+            <Button title="Voltar" variant="outline" onPress={() => router.back()} style={styles.erroBtn} />
+          </>
+        ) : (
+          <>
+            <ActivityIndicator size="large" color={colors.primary} />
+            <Text style={styles.carregandoTexto}>Iniciando a chamada…</Text>
+          </>
+        )}
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
       <View style={styles.mapWrap}>
-        <MapView
-          ref={mapRef}
-          style={StyleSheet.absoluteFill}
-          initialRegion={pontosMapa[0] ? { ...SAO_PAULO, ...pontosMapa[0].coordenada } : SAO_PAULO}
-          onMapReady={() => enquadrarMapa()}
-          toolbarEnabled={false}
-          showsUserLocation={localizacaoPermitida}
-          showsMyLocationButton={localizacaoPermitida}
-        >
-          {linhaRota.length > 1 ? (
-            <Polyline
-              coordinates={linhaRota}
-              strokeColor={colors.primary}
-              strokeWidth={4}
-              lineDashPattern={caminho ? undefined : [8, 6]}
-            />
-          ) : null}
-          {pontosMapa.map((p) => {
-            const isEscola = p.tipo === 'escola';
-            return (
-              <Marker key={p.key} coordinate={p.coordenada} title={p.nome} description={p.endereco}>
-                <View style={[styles.pin, isEscola ? styles.pinEscola : styles.pinAluno]}>
-                  <Text style={styles.pinText}>{paradas.indexOf(p) + 1}</Text>
-                </View>
-              </Marker>
-            );
-          })}
-        </MapView>
+        {MAPA_DISPONIVEL ? (
+          <MapView
+            ref={mapRef}
+            style={StyleSheet.absoluteFill}
+            initialRegion={pontosMapa[0] ? { ...SAO_PAULO, ...pontosMapa[0].coordenada } : SAO_PAULO}
+            onMapReady={() => enquadrarMapa()}
+            toolbarEnabled={false}
+            showsUserLocation={localizacaoPermitida}
+            showsMyLocationButton={localizacaoPermitida}
+          >
+            {linhaRota.length > 1 ? (
+              <Polyline
+                coordinates={linhaRota}
+                strokeColor={colors.primary}
+                strokeWidth={4}
+                lineDashPattern={caminho ? undefined : [8, 6]}
+              />
+            ) : null}
+            {pontosMapa.map((p) => {
+              const isEscola = p.tipo === 'escola';
+              return (
+                <Marker key={p.key} coordinate={p.coordenada} title={p.nome} description={p.endereco}>
+                  <View style={[styles.pin, isEscola ? styles.pinEscola : styles.pinAluno]}>
+                    <Text style={styles.pinText}>{paradas.indexOf(p) + 1}</Text>
+                  </View>
+                </Marker>
+              );
+            })}
+          </MapView>
+        ) : (
+          <View style={styles.mapaIndisponivel}>
+            <Ionicons name="map-outline" size={28} color={colors.textSecondary} />
+            <Text style={styles.mapaIndisponivelTexto}>Mapa indisponível neste build (sem chave do Google Maps).</Text>
+          </View>
+        )}
 
         <TouchableOpacity style={styles.backBtn} onPress={() => router.back()} accessibilityLabel="Voltar">
           <Ionicons name="arrow-back" size={20} color={colors.text} />
@@ -268,9 +350,15 @@ export default function RotaScreen() {
               <View style={styles.resumoItem}>
                 <Ionicons name="people-outline" size={18} color={colors.textSecondary} />
                 <Text style={styles.resumoValue}>
-                  {totalPresentes}/{totalAlunos}
+                  {contagem.aBordo}/{contagem.total}
                 </Text>
-                <Text style={styles.resumoLabel}>Presentes</Text>
+                <Text style={styles.resumoLabel}>Na van</Text>
+              </View>
+              <View style={styles.resumoDivider} />
+              <View style={styles.resumoItem}>
+                <Ionicons name="flag-outline" size={18} color={colors.textSecondary} />
+                <Text style={styles.resumoValue}>{contagem.entregues}</Text>
+                <Text style={styles.resumoLabel}>Entregues</Text>
               </View>
             </View>
 
@@ -292,8 +380,14 @@ export default function RotaScreen() {
       />
 
       <View style={styles.footer}>
-        <Button title="Cancelar" variant="outline" onPress={cancelar} style={styles.footerBtn} />
-        <Button title="Finalizar Rota" onPress={finalizar} style={styles.footerBtn} />
+        <Button
+          title="Cancelar"
+          variant="outline"
+          onPress={cancelar}
+          disabled={encerrando}
+          style={styles.footerBtn}
+        />
+        <Button title="Finalizar Rota" onPress={finalizar} loading={encerrando} style={styles.footerBtn} />
       </View>
     </SafeAreaView>
   );
@@ -301,7 +395,13 @@ export default function RotaScreen() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
-  mapWrap: { height: 260, backgroundColor: '#E8F1F8' },
+  centro: { alignItems: 'center', justifyContent: 'center', paddingHorizontal: 28, gap: 12 },
+  carregandoTexto: { fontSize: 14, color: colors.textSecondary },
+  erroTexto: { fontSize: 14, color: colors.error, textAlign: 'center' },
+  erroBtn: { alignSelf: 'stretch', borderRadius: 14 },
+  mapWrap: { height: 260, backgroundColor: colors.infoBg },
+  mapaIndisponivel: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32, gap: 8 },
+  mapaIndisponivelTexto: { color: colors.textSecondary, textAlign: 'center' },
   backBtn: {
     position: 'absolute',
     top: 12,
@@ -350,16 +450,15 @@ const styles = StyleSheet.create({
   legendaDot: { width: 10, height: 10, borderRadius: 5 },
   legendaText: { fontSize: 12, color: colors.textSecondary },
   parada: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
     backgroundColor: colors.white,
     borderRadius: 14,
     borderWidth: 1,
     borderColor: colors.borderLight,
     padding: 12,
+    gap: 10,
   },
-  paradaEscola: { backgroundColor: '#F4FBF4' },
+  paradaTopo: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  paradaEscola: { backgroundColor: colors.successSoft },
   separator: { height: 8 },
   ordem: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
   ordemAluno: { backgroundColor: colors.primary },
@@ -369,10 +468,20 @@ const styles = StyleSheet.create({
   paradaNome: { fontSize: 14, fontWeight: '700', color: colors.text },
   paradaNomeEscola: { color: colors.success },
   paradaMeta: { marginTop: 2, fontSize: 12, color: colors.textMuted },
-  presenca: { alignItems: 'center' },
-  presencaLabel: { fontSize: 10, fontWeight: '700', marginBottom: 2 },
-  presente: { color: colors.success },
-  ausente: { color: colors.textMuted },
+  statusLinha: { flexDirection: 'row', gap: 6 },
+  statusBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    minHeight: 36,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.backgroundAlt,
+  },
+  statusTexto: { fontSize: 12, fontWeight: '700', color: colors.textMuted },
   empty: { textAlign: 'center', color: colors.textMuted, marginTop: 24 },
   footer: {
     flexDirection: 'row',
