@@ -1,12 +1,13 @@
 # SafeWay Mobile
 
-Aplicativo mobile do SafeWay para o motorista de transporte escolar, feito com **Expo SDK 57** (React Native 0.86 + Expo Router). Segue as funcionalidades do front-end web (alunos e escolas, itinerários, chamada com rota no mapa e financeiro), tem um **assistente por voz**. **Login, itinerários e chamada** usam a [safeway-core-api](../safeway-core-api) quando `CORE_API_URL` está preenchido, e o assistente usa a safeway-ia-api quando `IA_API_URL` está preenchido. Com as variáveis vazias, tudo funciona com os dados mockados de `data/mock.js`. Alunos/escolas, cadastros, perfil e financeiro ainda são só mock.
+Aplicativo mobile do SafeWay para o motorista de transporte escolar, feito com **Expo SDK 57** (React Native 0.86 + Expo Router). Segue as funcionalidades do front-end web (alunos e escolas, itinerários, chamada com rota no mapa e financeiro) e tem um **assistente por voz**. As telas falam com o back-end real: a **API core** (Java/Spring, porta 8080) e a **API financeira** (porta 8081), rodando num PC da mesma rede do celular. O assistente usa a **safeway-ia-api** (Python, porta 8000) quando `IA_API_URL` está preenchido; vazio, responde com mock.
 
 ## Sumário
 
 - [Pré-requisitos](#pré-requisitos)
 - [1. Instalar as dependências](#1-instalar-as-dependências)
 - [2. Configurar o `.env`](#2-configurar-o-env)
+- [Back-end (API core e financeira)](#back-end-api-core-e-financeira)
 - [3. Escolher como rodar](#3-escolher-como-rodar)
 - [4. Rodar com development build (EAS)](#4-rodar-com-development-build-eas)
 - [5. Rodar localmente com Android Studio (opcional)](#5-rodar-localmente-com-android-studio-opcional)
@@ -51,18 +52,18 @@ cp .env.example .env
 ```
 
 ```env
+API_HOST=192.168.0.10
 GOOGLE_MAPS_API_KEY=sua_chave_aqui
 GOOGLE_ANDROID_CERT_SHA1=AA:BB:CC:...
-IA_API_URL=
-CORE_API_URL=
+IA_API_URL=http://192.168.0.10:8000
 ```
 
 | Variável | Para que serve |
 | --- | --- |
+| `API_HOST` | IP do PC que roda o back-end, na mesma rede Wi-Fi do celular (no Windows: `ipconfig`, campo "Endereço IPv4"). O app chama `http://API_HOST:8080` (core) e `http://API_HOST:8081` (financeiro). Se vier com `http://` ou porta, o app ignora essas partes. |
 | `GOOGLE_MAPS_API_KEY` | Mostra o mapa (Maps SDK for Android) e calcula o caminho pelas ruas na tela de rota (Routes API). |
 | `GOOGLE_ANDROID_CERT_SHA1` | SHA-1 da assinatura do app. A Routes API exige esse valor quando a chave é restrita a apps Android. Aceita com ou sem `:`. |
 | `IA_API_URL` | Endereço da API Python do assistente, por exemplo `http://192.168.0.10:8000`. Vazio: o assistente responde com o mock do próprio app. |
-| `CORE_API_URL` | Endereço da safeway-core-api (Java), por exemplo `http://192.168.0.10:8080`, sem barra no final. Usada no login, na lista de itinerários e na chamada da rota. Vazio: o app entra com qualquer e-mail/senha e usa os mocks. |
 
 > No celular, `localhost` é o próprio celular. Use o **IP do PC na rede Wi-Fi** (no Windows: `ipconfig`, "Endereço IPv4") e libere a porta no firewall.
 
@@ -77,6 +78,34 @@ O `.env` está no `.gitignore`. **Nunca faça commit da chave.**
    - **Restrições de API:** Maps SDK for Android e Routes API.
 
 Sem chave o app funciona normalmente. Só o mapa fica vazio e o caminho da rota aparece em linha reta tracejada.
+
+## Back-end (API core e financeira)
+
+Não há deploy: o back-end roda no PC e o celular acessa pelo IP da rede local.
+
+1. **API core** (`../safeway-core-api`), branch `feat/integracao-mobile`, na porta **8080**. Ela precisa:
+   - do par de chaves RSA do JWT;
+   - de uma chave do Google com a **Geocoding API**, porque cadastrar escola ou aluno converte o endereço em coordenadas. Sem ela, o cadastro devolve erro de endereço não localizado.
+2. **API financeira** (`../safeway-financial-api`) na porta **8081**. Ela precisa:
+   - do **mesmo par de chaves RSA** da core, senão recusa o token do app;
+   - do **RabbitMQ** rodando, porque as mensalidades são geradas quando um aluno é cadastrado.
+3. Libere as portas 8080 e 8081 no **Firewall do Windows** para a rede privada.
+4. Preencha `API_HOST` no `.env` e reinicie o `npx expo start`.
+
+A branch `feat/integracao-mobile` da core só **acrescenta** o que o app precisa, sem mudar o que já existia:
+
+| Mudança | Para que serve |
+| --- | --- |
+| `GET /routes/{id}/stops` | Alunos e escolas do itinerário na ordem do trajeto, com endereço e coordenadas (edição e mapa da rota). |
+| `guardians` em `StudentResponse` e `id` em `school` | Responsável no detalhe do aluno e no financeiro; agrupar alunos por escola. |
+| `createdAt` e `presences` em `AttendanceResponse` | Histórico de chamadas e retomada de uma chamada em andamento. |
+
+Como o app se comporta com o back-end:
+
+- **Login:** o token fica **só em memória**. Fechou o app, entra de novo. Um `401` da core volta para o login.
+- **Chamada:** entrar na rota abre a chamada (`POST /routes/{id}/attendances`), ou retoma a que já está em andamento. Cada toque no switch envia `PRESENT` ou `ABSENT`. Ao finalizar, quem não está presente é enviado como `ABSENT` e a chamada é encerrada.
+- **HTTP sem TLS:** funciona no development build. Um APK `preview` ou `production` bloqueia HTTP puro e precisaria de configuração nativa (e APK novo).
+- **`data/mock.js`** continua no projeto como referência, mas nenhuma tela usa mais. O mock do assistente (`services/iaMock.js`) segue ativo enquanto `IA_API_URL` estiver vazio.
 
 ## 3. Escolher como rodar
 
@@ -113,7 +142,6 @@ No **Git Bash**, lendo direto do `.env`:
 eas env:create --name GOOGLE_MAPS_API_KEY --value "$(grep '^GOOGLE_MAPS_API_KEY=' .env | cut -d= -f2-)" --environment development --visibility sensitive --non-interactive
 eas env:create --name GOOGLE_ANDROID_CERT_SHA1 --value "$(grep '^GOOGLE_ANDROID_CERT_SHA1=' .env | cut -d= -f2-)" --environment development --visibility sensitive --non-interactive
 # Opcional: só se o APK precisar apontar para as APIs sem o Metro (o `npx expo start` já lê o .env)
-eas env:create --name CORE_API_URL --value "$(grep '^CORE_API_URL=' .env | cut -d= -f2-)" --environment development --visibility plaintext --non-interactive
 eas env:create --name IA_API_URL --value "$(grep '^IA_API_URL=' .env | cut -d= -f2-)" --environment development --visibility plaintext --non-interactive
 ```
 
@@ -124,7 +152,6 @@ $envs = @{}; Get-Content .env | ForEach-Object { $p = $_ -split '=', 2; if ($p.C
 eas env:create --name GOOGLE_MAPS_API_KEY --value $envs['GOOGLE_MAPS_API_KEY'] --environment development --visibility sensitive --non-interactive
 eas env:create --name GOOGLE_ANDROID_CERT_SHA1 --value $envs['GOOGLE_ANDROID_CERT_SHA1'] --environment development --visibility sensitive --non-interactive
 # Opcional (ver acima)
-eas env:create --name CORE_API_URL --value $envs['CORE_API_URL'] --environment development --visibility plaintext --non-interactive
 eas env:create --name IA_API_URL --value $envs['IA_API_URL'] --environment development --visibility plaintext --non-interactive
 ```
 
@@ -190,7 +217,7 @@ cd android && ./gradlew signingReport
 
 Se você esquecer, o app costuma mostrar um erro do tipo `Cannot find native module ...`.
 
-> **APK novo necessário desde a integração com a core-api:** entraram `expo-secure-store` (guarda o login com segurança) e `expo-speech` (lê as respostas do assistente), e mudou o texto da permissão de localização. Num APK antigo o app **não quebra**: só não lembra o login ao fechar e não lê as respostas em voz alta.
+> **APK novo necessário para o assistente:** entrou `expo-speech` (lê as respostas do assistente) e mudou o texto da permissão de localização. Num APK antigo o app **não quebra**: só não lê as respostas em voz alta.
 
 ## Assistente por voz (IA)
 
@@ -202,7 +229,7 @@ A aba **Assistente** deixa o motorista falar ou digitar pedidos como "o Enzo ent
 - **Postos:** "onde tem gasolina mais barata?" mostra uma lista (revenda, bandeira, endereço, preço e data da coleta da ANP) com botão para abrir no mapa.
 - **Localização:** na primeira vez o assistente pede a localização (para incluir o link de onde a van está nos avisos e procurar postos perto). Sem permissão ou sem sinal, segue sem ela; o envio não espera o GPS mais que ~2,5 s.
 - **Leitura em voz alta:** as respostas são lidas com `expo-speech` (voz do aparelho). O botão de alto-falante no topo silencia.
-- **Respostas:** com `IA_API_URL` vazio, `services/iaMock.js` responde com regras simples sobre os dados mockados (inclusive rascunhos de atraso com os telefones de `data/mock.js` e postos fictícios). Com a URL preenchida, o app chama a API Python.
+- **Respostas:** com `IA_API_URL` vazio, `services/iaMock.js` responde com regras simples sobre os dados já carregados no app (chamada aberta, mensalidades e despesas). Com a URL preenchida, o app chama a API Python.
 
 O contrato completo está em [`../CONTRATO-IA.md`](../CONTRATO-IA.md). Resumo do `POST {IA_API_URL}/ia/mensagens` (com `Authorization: Bearer <token do login>`):
 
@@ -210,7 +237,7 @@ O contrato completo está em [`../CONTRATO-IA.md`](../CONTRATO-IA.md). Resumo do
 {
   "conversaId": null,
   "texto": "tô parado no trânsito",
-  "itinerarioId": "uuid-do-itinerario-em-andamento",
+  "itinerarioId": "uuid-da-rota-em-andamento",
   "localizacao": { "latitude": -23.55, "longitude": -46.63 }
 }
 ```
@@ -224,18 +251,9 @@ O contrato completo está em [`../CONTRATO-IA.md`](../CONTRATO-IA.md). Resumo do
 ```
 
 - `conversaId` vem `null` na primeira mensagem; a API cria a conversa e devolve o id, que o app reenvia nas próximas.
-- `itinerarioId` é o da rota em andamento, ou `null`; `localizacao` é `null` sem permissão/sinal.
-- Tipos de ação: `MARCAR_PRESENCA` (já gravada; o app só atualiza a tela), `ENVIAR_MENSAGEM_RESPONSAVEL` (rascunho) e `SUGERIR_POSTOS`.
+- `itinerarioId` é o UUID da rota em andamento, ou `null`; `localizacao` é `null` sem permissão/sinal. A requisição leva `Authorization: Bearer` com o token do login.
+- Tipos de ação: `MARCAR_PRESENCA` (a ia-api já gravou na API core com `PUT /attendances/{id}/presences`; o app só atualiza a tela), `ENVIAR_MENSAGEM_RESPONSAVEL` (rascunho) e `SUGERIR_POSTOS`. Contrato completo em `../CONTRATO-IA.md`.
 - 401 da API leva de volta ao login.
-
-## Integração com a core-api
-
-Com `CORE_API_URL` preenchido:
-
-- **Login** em `POST /auth/v2/login`. O token fica guardado com `expo-secure-store` e vai em `Authorization: Bearer` em toda chamada. Se a API responder 401 (token vencido), o app volta para o login. **Sair da conta** fica no Perfil.
-- **Itinerários:** `GET /itinerarios` (lista) e `GET /itinerarios/{id}` + `GET /itinerarios/{id}/alunos` (rota e coordenadas).
-- **Chamada:** ao abrir a rota, `POST /chamada/iniciar/{itinerarioId}` (reaproveita a chamada em andamento, com as presenças já gravadas). Cada toque em Presente/Ausente/Entregue grava na hora com `PUT /chamada/{chamadaId}/registrar-presenca`. **Finalizar** grava todas e chama `PUT /chamada/alterar/{itinerarioId}?status=FINALIZADA` (**Cancelar** usa `CANCELADA`).
-- O usuário de teste precisa existir na core-api (cadastro pelo web ou `POST /auth/v2/register`; o cadastro do app ainda é mock).
 
 ## Estrutura do projeto
 
@@ -250,11 +268,12 @@ app/                     Telas (Expo Router: cada arquivo é uma rota)
     financeiro/          Painel com gráficos, mensalidades, despesas e formulário de despesa
     assistente.jsx       Conversa com a IA por voz ou texto
 components/              Componentes reutilizáveis (Input, Select, Button, Card, gráficos...)
-contexts/                Estado compartilhado (FinanceiroContext, ChamadaContext)
-hooks/                   Teclado, transcrição de voz (useTranscricao) e leitura em voz alta (useLeituraEmVoz)
-services/                Integrações: cliente HTTP e sessão (api, sessao, auth), itinerários/chamada,
-                         localização, Routes API do Google, API da IA e o mock dela
-data/mock.js             Todos os dados mockados, no formato que a API devolve
+contexts/                Estado compartilhado (FinanceiroContext, ChamadaContext), já ligado à API
+hooks/                   Carregamento de dados (useCarregar), teclado, transcrição de voz (useTranscricao)
+                         e leitura em voz alta (useLeituraEmVoz)
+services/                api.js (cliente HTTP, token, erros), um arquivo por domínio (auth, alunos,
+                         escolas, itinerarios, chamadas, financeiro, usuario), Routes API, localização e IA
+data/mock.js             Mocks antigos, mantidos só como referência (as telas não usam mais)
 utils/                   Formatadores, máscaras, validações e regras de negócio
 constants/colors.js      Paleta de cores
 app.config.js            Configuração do Expo (lê o .env)
@@ -262,6 +281,24 @@ eas.json                 Perfis de build do EAS (development, preview, productio
 ```
 
 ## Problemas comuns
+
+**"Configure API_HOST no .env..."**
+O `API_HOST` está vazio. Preencha e reinicie o `npx expo start`.
+
+**"Não foi possível conectar ao servidor em ..."**
+- O back-end não está rodando ou está em outra porta.
+- O celular está em outra rede. O `--tunnel` do Expo não resolve isso, porque o túnel serve só para o Metro e não para a API.
+- O Firewall do Windows está bloqueando as portas 8080 e 8081.
+- O IP do PC mudou (rode `ipconfig` de novo).
+
+**"Não foi possível localizar o endereço no mapa"** ao cadastrar escola ou aluno
+A API core não conseguiu converter o endereço em coordenadas. Confira os dados do endereço e a chave Google (Geocoding API) configurada no back-end.
+
+**"A API financeira recusou o login"**
+A API financeira não usa o mesmo par de chaves RSA da core.
+
+**Cadastrei um aluno e a mensalidade não apareceu**
+As mensalidades são criadas pela API financeira a partir de uma mensagem do RabbitMQ. Confira se o RabbitMQ e a API financeira estão rodando.
 
 **`npm install` falha com `ERESOLVE`**
 Confira se o arquivo `.npmrc` com `legacy-peer-deps=true` existe na raiz do projeto.
@@ -281,11 +318,11 @@ A Routes API falhou. O motivo aparece no terminal do Metro, em `[rota] caminho p
 - "Só funciona no app instalado pelo development build": você está no Expo Go ou num APK gerado antes da instalação do `expo-speech-recognition`. Gere um APK novo.
 - "Reconhecimento de voz indisponível": instale ou ative o app **Google** / **Serviços de fala do Google** no celular.
 
-**"Sem conexão com o servidor" no login**
-`CORE_API_URL` está com `localhost` ou com um IP fora da rede do celular. Use o IP do PC na rede e libere a porta (ex.: 8080) no firewall do Windows.
+**"Não foi possível conectar ao servidor" no login**
+`API_HOST` está errado ou o celular está em outra rede. Use o IP do PC na rede e libere as portas (8080, 8081 e 8000) no firewall do Windows.
 
-**Preciso entrar de novo toda vez / as respostas não são lidas em voz alta**
-O APK é anterior ao `expo-secure-store`/`expo-speech`. Gere um APK novo.
+**As respostas do assistente não são lidas em voz alta**
+O APK é anterior ao `expo-speech`. Gere um APK novo.
 
 **Mudei o `.env` e nada aconteceu**
 Pare o `npx expo start` e rode de novo. O `.env` só é lido quando o servidor inicia.

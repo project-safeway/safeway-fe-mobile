@@ -4,9 +4,11 @@ import { Button } from '../../../components/Button';
 import { Card } from '../../../components/Card';
 import { BackHeader } from '../../../components/BackHeader';
 import { KeyboardScreen } from '../../../components/KeyboardScreen';
+import { EstadoCarregamento } from '../../../components/EstadoCarregamento';
 import { colors } from '../../../constants/colors';
-import { mockAlunosDetalhe } from '../../../data/mock';
-import { formatCurrency, formatDate } from '../../../utils/formatters';
+import { useCarregar } from '../../../hooks/useCarregar';
+import { buscarAluno } from '../../../services/alunos';
+import { formatCurrency, formatDate, formatEndereco, formatPhone } from '../../../utils/formatters';
 
 function InfoItem({ label, value }) {
   return (
@@ -19,13 +21,21 @@ function InfoItem({ label, value }) {
 
 export default function AlunoDetalheScreen() {
   const { id } = useLocalSearchParams();
-  const aluno = mockAlunosDetalhe[id] || mockAlunosDetalhe[1];
-  const responsavel = aluno.responsaveis?.[0];
+  const { dados: aluno, erro, recarregar } = useCarregar(() => buscarAluno(id), [id]);
+
+  if (!aluno) {
+    return (
+      <KeyboardScreen>
+        <BackHeader title="Aluno" subtitle="Visualização completa do cadastro" onBack={() => router.back()} />
+        <EstadoCarregamento erro={erro} onTentarNovamente={recarregar} />
+      </KeyboardScreen>
+    );
+  }
 
   return (
     <KeyboardScreen>
       <BackHeader
-        title={aluno.nome}
+        title={aluno.name}
         subtitle="Visualização completa do cadastro"
         onBack={() => router.back()}
       />
@@ -33,60 +43,43 @@ export default function AlunoDetalheScreen() {
       <Button
         title="Editar Cadastro"
         variant="outline"
-        onPress={() => Alert.alert('Em breve', 'Edição será integrada com o backend.')}
+        onPress={() => Alert.alert('Em breve', 'A edição do aluno ainda não está disponível no app.')}
         style={styles.editBtn}
       />
 
       <Card>
         <Text style={styles.section}>Dados do Aluno</Text>
-        <InfoItem label="Nome" value={aluno.nome} />
-        <InfoItem
-          label="Nascimento"
-          value={aluno.dtNascimento ? formatDate(aluno.dtNascimento) : null}
-        />
-        <InfoItem label="Série" value={aluno.serie} />
-        <InfoItem label="Sala" value={aluno.sala} />
+        <InfoItem label="Nome" value={aluno.name} />
+        <InfoItem label="Nascimento" value={aluno.birthdate ? formatDate(aluno.birthdate) : null} />
+        <InfoItem label="Série" value={aluno.grade} />
+        <InfoItem label="Sala" value={aluno.classroom} />
         <InfoItem label="Professor" value={aluno.professor} />
       </Card>
 
       <Card>
         <Text style={styles.section}>Escola</Text>
-        <InfoItem label="Nome" value={aluno.escola?.nome} />
-        <InfoItem
-          label="Endereço"
-          value={
-            aluno.escola?.endereco
-              ? `${aluno.escola.endereco.logradouro}, ${aluno.escola.endereco.numero} - ${aluno.escola.endereco.bairro}`
-              : null
-          }
-        />
+        <InfoItem label="Nome" value={aluno.school?.name} />
+        <InfoItem label="Endereço" value={formatEndereco(aluno.school?.address)} />
       </Card>
 
       <Card>
         <Text style={styles.section}>Financeiro</Text>
-        <InfoItem
-          label="Mensalidade"
-          value={formatCurrency(aluno.valorPadraoMensalidade)}
-        />
-        <InfoItem label="Dia de vencimento" value={aluno.diaVencimento} />
+        <InfoItem label="Mensalidade" value={formatCurrency(aluno.monthlyFee)} />
+        <InfoItem label="Dia de vencimento" value={aluno.dueDate} />
       </Card>
 
-      {responsavel ? (
-        <Card>
+      {(aluno.guardians || []).map((responsavel) => (
+        <Card key={responsavel.id}>
           <Text style={styles.section}>Responsável</Text>
-          <InfoItem label="Nome" value={responsavel.nome} />
-          <InfoItem label="Telefone" value={responsavel.tel1} />
-          <InfoItem label="E-mail" value={responsavel.email} />
+          <InfoItem label="Nome" value={responsavel.name} />
           <InfoItem
-            label="Endereço"
-            value={
-              responsavel.endereco
-                ? `${responsavel.endereco.logradouro}, ${responsavel.endereco.numero}`
-                : null
-            }
+            label="Telefone"
+            value={responsavel.primaryPhoneNumber ? formatPhone(responsavel.primaryPhoneNumber) : null}
           />
+          <InfoItem label="E-mail" value={responsavel.email} />
+          <InfoItem label="Endereço" value={formatEndereco(responsavel.address)} />
         </Card>
-      ) : null}
+      ))}
     </KeyboardScreen>
   );
 }

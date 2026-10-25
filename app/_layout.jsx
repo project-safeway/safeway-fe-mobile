@@ -1,21 +1,10 @@
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { useEffect } from 'react';
-import { Stack, router } from 'expo-router';
+import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { Alert, StyleSheet } from 'react-native';
+import { StyleSheet } from 'react-native';
 import { colors } from '../constants/colors';
-import { aoExpirarSessao } from '../services/sessao';
 
 export default function RootLayout() {
-  useEffect(
-    () =>
-      aoExpirarSessao(() => {
-        router.replace('/login');
-        Alert.alert('Sessão encerrada', 'Sua sessão expirou. Entre novamente.');
-      }),
-    []
-  );
-
   return (
     <GestureHandlerRootView style={styles.root}>
       <StatusBar style="dark" />

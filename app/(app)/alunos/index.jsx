@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import {
   View,
   Text,
@@ -13,20 +13,29 @@ import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { BackHeader } from '../../../components/BackHeader';
 import { Card } from '../../../components/Card';
+import { EstadoCarregamento } from '../../../components/EstadoCarregamento';
 import { colors } from '../../../constants/colors';
-import { mockEscolasComAlunos } from '../../../data/mock';
+import { useCarregar } from '../../../hooks/useCarregar';
+import { excluirEscola, listarEscolas } from '../../../services/escolas';
+import { excluirAluno, listarAlunos } from '../../../services/alunos';
+
+async function buscarEscolasComAlunos() {
+  const [escolas, alunos] = await Promise.all([listarEscolas(), listarAlunos()]);
+  return escolas.map((escola) => ({
+    escola,
+    alunos: alunos.filter((aluno) => aluno.school?.id === escola.id),
+  }));
+}
 
 export default function ListaAlunosScreen() {
   const [busca, setBusca] = useState('');
   const [aberto, setAberto] = useState({});
-  const [escolas, setEscolas] = useState(mockEscolasComAlunos);
+  const { dados, setDados, erro, recarregar } = useCarregar(buscarEscolasComAlunos);
 
   const filtrar = (alunos) => {
     if (!busca.trim()) return alunos;
-    return alunos.filter((a) => a.nome?.toLowerCase().includes(busca.toLowerCase()));
+    return alunos.filter((a) => a.name?.toLowerCase().includes(busca.toLowerCase()));
   };
-
-  const data = useMemo(() => escolas, [escolas]);
 
   const deleteEscola = (escolaId, nome, alunos) => {
     if (alunos?.length) {
@@ -41,7 +50,14 @@ export default function ListaAlunosScreen() {
       {
         text: 'Excluir',
         style: 'destructive',
-        onPress: () => setEscolas((prev) => prev.filter((i) => i.escola.id !== escolaId)),
+        onPress: async () => {
+          try {
+            await excluirEscola(escolaId);
+            setDados((prev) => prev.filter((i) => i.escola.id !== escolaId));
+          } catch (e) {
+            Alert.alert('Não foi possível excluir', e.message);
+          }
+        },
       },
     ]);
   };
@@ -52,13 +68,19 @@ export default function ListaAlunosScreen() {
       {
         text: 'Excluir',
         style: 'destructive',
-        onPress: () =>
-          setEscolas((prev) =>
-            prev.map((item) => ({
-              ...item,
-              alunos: item.alunos.filter((a) => a.id !== alunoId),
-            }))
-          ),
+        onPress: async () => {
+          try {
+            await excluirAluno(alunoId);
+            setDados((prev) =>
+              prev.map((item) => ({
+                ...item,
+                alunos: item.alunos.filter((a) => a.id !== alunoId),
+              }))
+            );
+          } catch (e) {
+            Alert.alert('Não foi possível excluir', e.message);
+          }
+        },
       },
     ]);
   };
@@ -66,7 +88,14 @@ export default function ListaAlunosScreen() {
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <FlatList
-        data={data}
+        data={dados ?? []}
+        ListEmptyComponent={
+          dados ? (
+            <Text style={styles.empty}>Nenhuma escola cadastrada. Comece cadastrando uma escola.</Text>
+          ) : (
+            <EstadoCarregamento erro={erro} onTentarNovamente={recarregar} />
+          )
+        }
         keyExtractor={(item) => String(item.escola.id)}
         contentContainerStyle={styles.content}
         ListHeaderComponent={
@@ -114,9 +143,9 @@ export default function ListaAlunosScreen() {
             <Card style={styles.schoolCard}>
               <View style={[styles.schoolHead, !isOpen && styles.schoolHeadClosed]}>
                 <TouchableOpacity style={styles.schoolInfo} onPress={alternar} activeOpacity={0.7}>
-                  <Text style={styles.schoolName}>{escola.nome}</Text>
+                  <Text style={styles.schoolName}>{escola.name}</Text>
                   <Text style={styles.schoolAddr}>
-                    {escola.endereco?.logradouro || escola.endereco?.cidade || 'Endereço não informado'}
+                    {escola.address?.street || escola.address?.city || 'Endereço não informado'}
                   </Text>
                   <Text style={styles.schoolCount}>
                     {alunos.length} {alunos.length === 1 ? 'aluno' : 'alunos'}
@@ -126,14 +155,14 @@ export default function ListaAlunosScreen() {
                   <TouchableOpacity
                     style={styles.iconBtn}
                     onPress={() => router.push(`/(app)/alunos/escola-editar/${escola.id}`)}
-                    accessibilityLabel={`Editar escola ${escola.nome}`}
+                    accessibilityLabel={`Editar escola ${escola.name}`}
                   >
                     <Ionicons name="create-outline" size={18} color={colors.textSecondary} />
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={styles.iconBtn}
-                    onPress={() => deleteEscola(escola.id, escola.nome, alunos)}
-                    accessibilityLabel={`Excluir escola ${escola.nome}`}
+                    onPress={() => deleteEscola(escola.id, escola.name, alunos)}
+                    accessibilityLabel={`Excluir escola ${escola.name}`}
                   >
                     <Ionicons name="trash-outline" size={18} color={colors.textSecondary} />
                   </TouchableOpacity>
@@ -170,9 +199,9 @@ export default function ListaAlunosScreen() {
                           <Ionicons name="person" size={18} color={colors.mapBlue} />
                         </View>
                         <View style={styles.alunoInfo}>
-                          <Text style={styles.alunoName}>{aluno.nome}</Text>
+                          <Text style={styles.alunoName}>{aluno.name}</Text>
                           <Text style={styles.alunoMeta}>
-                            {[aluno.serie && `Série ${aluno.serie}`, aluno.sala && `Sala ${aluno.sala}`]
+                            {[aluno.grade && `Série ${aluno.grade}`, aluno.classroom && `Sala ${aluno.classroom}`]
                               .filter(Boolean)
                               .join(' • ')}
                           </Text>
@@ -181,7 +210,7 @@ export default function ListaAlunosScreen() {
                           ) : null}
                         </View>
                         <TouchableOpacity
-                          onPress={() => deleteAluno(aluno.id, aluno.nome)}
+                          onPress={() => deleteAluno(aluno.id, aluno.name)}
                           hitSlop={8}
                         >
                           <Ionicons name="trash-outline" size={16} color={colors.textMuted} />

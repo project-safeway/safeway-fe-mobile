@@ -1,5 +1,6 @@
 import Constants from 'expo-constants';
-import { requisitar } from './api';
+import { router } from 'expo-router';
+import { ErroApi, definirToken, obterToken } from './api';
 import { responderMock } from './iaMock';
 
 /**
@@ -69,7 +70,38 @@ export async function enviarMensagem(body, contextoLocal) {
     return responderMock(body, contextoLocal);
   }
 
-  const data = (await requisitar(url, '/ia/mensagens', { method: 'POST', body, tempoLimiteMs: TEMPO_LIMITE_IA_MS })) || {};
+  const token = obterToken();
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TEMPO_LIMITE_IA_MS);
+  let response;
+  try {
+    response = await fetch(`${url}/ia/mensagens`, {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+  } catch (erro) {
+    throw new ErroApi(
+      erro.name === 'AbortError' ? 'O assistente demorou para responder.' : 'Sem conexão com o assistente.',
+      0
+    );
+  } finally {
+    clearTimeout(timer);
+  }
+
+  const data = await response.json().catch(() => ({}));
+  if (response.status === 401) {
+    definirToken(null);
+    router.replace('/login');
+    throw new ErroApi('Sua sessão expirou. Entre novamente.', 401);
+  }
+  if (!response.ok) throw new ErroApi(data?.detail || `API da IA respondeu ${response.status}`, response.status);
+
   return {
     conversaId: data.conversaId ?? body.conversaId,
     resposta: data.resposta ?? '',

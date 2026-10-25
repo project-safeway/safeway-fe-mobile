@@ -1,9 +1,11 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, KeyboardAvoidingView, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { BackHeader } from '../../../components/BackHeader';
 import { Card } from '../../../components/Card';
+import { EstadoCarregamento } from '../../../components/EstadoCarregamento';
 import { Input } from '../../../components/Input';
 import { FiltrosCard } from '../../../components/financeiro/FiltrosCard';
 import { FiltroChip } from '../../../components/financeiro/FiltroChip';
@@ -33,7 +35,13 @@ function filtrosDoAtalho(atalho) {
 const filtrosIniciais = () => ({ texto: '', status: [], ...filtrosDoAtalho('mes') });
 
 export default function MensalidadesScreen() {
-  const { mensalidades, pagarMensalidade, cancelarMensalidade, nomeResponsavel } = useFinanceiro();
+  const { mensalidades, carregado, erro, recarregar, pagarMensalidade, cancelarMensalidade, nomeResponsavel } =
+    useFinanceiro();
+  useFocusEffect(
+    useCallback(() => {
+      recarregar();
+    }, [recarregar])
+  );
   const keyboardInset = useKeyboardBottomInset();
   const [filtros, setFiltros] = useState(filtrosIniciais);
 
@@ -153,11 +161,15 @@ export default function MensalidadesScreen() {
           keyboardDismissMode="on-drag"
           ListHeaderComponent={header}
           ListEmptyComponent={
-            <Card style={styles.emptyCard}>
-              <Ionicons name="cash-outline" size={40} color={colors.border} />
-              <Text style={styles.emptyTitle}>Nenhuma mensalidade encontrada</Text>
-              <Text style={styles.emptyText}>Tente ajustar os filtros.</Text>
-            </Card>
+            carregado ? (
+              <Card style={styles.emptyCard}>
+                <Ionicons name="cash-outline" size={40} color={colors.border} />
+                <Text style={styles.emptyTitle}>Nenhuma mensalidade encontrada</Text>
+                <Text style={styles.emptyText}>Tente ajustar os filtros.</Text>
+              </Card>
+            ) : (
+              <EstadoCarregamento erro={erro} onTentarNovamente={recarregar} />
+            )
           }
           renderItem={({ item }) => {
             const emAberto = item.status !== 'PAGO' && item.status !== 'CANCELADO';

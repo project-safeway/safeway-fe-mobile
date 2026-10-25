@@ -1,32 +1,24 @@
-import { core, ErroApi, usandoMockCore } from './api';
-import { limparSessao, salvarSessao } from './sessao';
-import { mockMotorista } from '../data/mock';
+import { apiCore, definirToken } from './api';
 
 /**
- * POST /auth/v2/login — `{ email, senha }` → `{ accessToken, expiresIn, nomeUsuario, userId, idTransporte }`.
- * Sem CORE_API_URL, entra direto com o motorista mockado.
+ * POST /auth/login
+ * @returns {Promise<{ accessToken: string, expiresIn: number, username: string, userId: string, transportId: string }>}
  */
-export async function entrar(email, senha) {
-  if (usandoMockCore()) {
-    console.log('[mock] POST /auth/v2/login', { email });
-    await new Promise((resolve) => setTimeout(resolve, 500));
-    return salvarSessao({ nomeUsuario: mockMotorista.nome });
-  }
-
-  try {
-    const resposta = await core('/auth/v2/login', {
-      method: 'POST',
-      body: { email: email.trim(), senha },
-      autenticado: false,
-    });
-    if (!resposta?.accessToken) throw new ErroApi('Resposta de login inválida.', 500);
-    return salvarSessao(resposta);
-  } catch (error) {
-    if (error.status === 401) throw new ErroApi('E-mail ou senha incorretos.', 401);
-    throw error;
-  }
+export async function entrar(email, password) {
+  const resposta = await apiCore.post('/auth/login', { email, password }, { autenticado: false });
+  definirToken(resposta.accessToken);
+  return resposta;
 }
 
-export async function sair() {
-  await limparSessao();
+/**
+ * POST /auth/register
+ * @param {{ name: string, email: string, password: string, phoneNumber: string,
+ *   transport: { licensePlate: string, model: string, capacity: number } }} body
+ */
+export function cadastrar(body) {
+  return apiCore.post('/auth/register', body, { autenticado: false });
+}
+
+export function sair() {
+  definirToken(null);
 }

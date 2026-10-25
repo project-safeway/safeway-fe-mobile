@@ -11,26 +11,53 @@ import { Button } from '../../../../components/Button';
 import { BackHeader } from '../../../../components/BackHeader';
 import { Card } from '../../../../components/Card';
 import { KeyboardScreen } from '../../../../components/KeyboardScreen';
+import { EstadoCarregamento } from '../../../../components/EstadoCarregamento';
 import { colors } from '../../../../constants/colors';
-import { mockItinerarios, mockEscolasComAlunos, mockAlunosDetalhe } from '../../../../data/mock';
+import { useCarregar } from '../../../../hooks/useCarregar';
+import { atualizarItinerario, buscarItinerario, buscarParadas } from '../../../../services/itinerarios';
+import { listarAlunos } from '../../../../services/alunos';
+import { listarEscolas } from '../../../../services/escolas';
 import { isRequired } from '../../../../utils/validators';
+import { horaCurta } from '../../../../utils/formatters';
 import { HORARIO_OPTIONS, TIPO_VIAGEM_OPTIONS } from '../../../../utils/constants';
-import { buildTrajeto, reindexTrajeto, toParadas } from '../../../../utils/trajeto';
+import { buildTrajeto, reindexTrajeto, toStops } from '../../../../utils/trajeto';
 
 export default function EditarItinerarioScreen() {
   const { id } = useLocalSearchParams();
+  const { dados, erro, recarregar } = useCarregar(async () => {
+    const [itinerario, paradas, alunos, escolas] = await Promise.all([
+      buscarItinerario(id),
+      buscarParadas(id),
+      listarAlunos(),
+      listarEscolas(),
+    ]);
+    return { itinerario, paradas, alunos, escolas };
+  }, [id]);
+
+  if (!dados) {
+    return (
+      <KeyboardScreen>
+        <BackHeader
+          title="Editar Itinerário"
+          subtitle="Altere as informações e gerencie o planejamento de rotas"
+        />
+        <EstadoCarregamento erro={erro} onTentarNovamente={recarregar} />
+      </KeyboardScreen>
+    );
+  }
+
+  return <FormularioItinerario {...dados} />;
+}
+
+function FormularioItinerario({ itinerario, paradas, alunos, escolas }) {
   const insets = useSafeAreaInsets();
   const scrollRef = useAnimatedRef();
-  const base = useMemo(
-    () => mockItinerarios.find((i) => String(i.id) === String(id)) || mockItinerarios[0],
-    [id]
-  );
 
-  const [nome, setNome] = useState(base.nome);
-  const [horarioInicio, setHorarioInicio] = useState(base.horarioInicio);
-  const [horarioFim, setHorarioFim] = useState(base.horarioFim);
-  const [tipoViagem, setTipoViagem] = useState(base.tipoViagem);
-  const [trajeto, setTrajeto] = useState(() => buildTrajeto(base));
+  const [nome, setNome] = useState(itinerario.name);
+  const [horarioInicio, setHorarioInicio] = useState(horaCurta(itinerario.startTime));
+  const [horarioFim, setHorarioFim] = useState(horaCurta(itinerario.endTime));
+  const [tipoViagem, setTipoViagem] = useState(itinerario.routeType);
+  const [trajeto, setTrajeto] = useState(() => buildTrajeto(paradas));
   const [addModal, setAddModal] = useState(null);
   const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);
@@ -41,25 +68,23 @@ export default function EditarItinerarioScreen() {
   const opcoesAdicionar = useMemo(() => {
     const noTrajeto = new Set(trajeto.map((t) => t.key));
     if (addModal === 'aluno') {
-      return mockEscolasComAlunos.flatMap(({ escola, alunos }) =>
-        alunos
-          .filter((a) => !noTrajeto.has(`aluno-${a.id}`))
-          .map((a) => ({
-            id: a.id,
-            nome: a.nome,
-            escola: escola.nome,
-            responsavel: mockAlunosDetalhe[a.id]?.responsaveis?.[0]?.nome,
-          }))
-      );
+      return alunos
+        .filter((a) => !noTrajeto.has(`aluno-${a.id}`))
+        .map((a) => ({
+          id: a.id,
+          nome: a.name,
+          escola: a.school?.name,
+          sala: a.classroom,
+          responsavel: a.guardians?.[0]?.name,
+        }));
     }
     if (addModal === 'escola') {
-      return mockEscolasComAlunos
-        .map(({ escola }) => escola)
+      return escolas
         .filter((e) => !noTrajeto.has(`escola-${e.id}`))
-        .map((e) => ({ id: e.id, nome: e.nome, cidade: e.endereco?.cidade }));
+        .map((e) => ({ id: e.id, nome: e.name, cidade: e.address?.city }));
     }
     return [];
-  }, [addModal, trajeto]);
+  }, [addModal, trajeto, alunos, escolas]);
 
   const adicionar = (option) => {
     setTrajeto((prev) =>
@@ -84,7 +109,7 @@ export default function EditarItinerarioScreen() {
     );
   }, []);
 
-  const salvar = () => {
+  const salvar = async () => {
     const next = {};
     if (!isRequired(nome)) next.nome = 'Nome é obrigatório';
     if (!horarioInicio) next.horarioInicio = 'Horário de início é obrigatório';
@@ -95,23 +120,24 @@ export default function EditarItinerarioScreen() {
     setErrors(next);
     if (Object.keys(next).length) return;
 
-    const payload = {
-      nome,
-      horarioInicio: `${horarioInicio}:00`,
-      horarioFim: `${horarioFim}:00`,
-      tipoViagem,
-      ativo: base.ativo ?? true,
-      paradas: toParadas(trajeto),
-    };
-
     setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
-      console.log('[mock] PUT /itinerarios/' + base.id, payload);
+    try {
+      await atualizarItinerario(itinerario.id, {
+        name: nome.trim(),
+        startTime: `${horarioInicio}:00`,
+        endTime: `${horarioFim}:00`,
+        routeType: tipoViagem,
+        active: itinerario.active ?? true,
+        stops: toStops(trajeto),
+      });
       Alert.alert('Itinerário atualizado', 'Alterações salvas com sucesso!', [
         { text: 'OK', onPress: () => router.back() },
       ]);
-    }, 500);
+    } catch (e) {
+      Alert.alert('Não foi possível salvar', e.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const renderItem = useCallback(

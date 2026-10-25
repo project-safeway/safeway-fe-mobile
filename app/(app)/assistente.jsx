@@ -29,7 +29,6 @@ import {
   pedirPermissaoLocalizacao,
   statusPermissaoLocalizacao,
 } from '../../services/localizacao';
-import { obterSessao } from '../../services/sessao';
 import { interpretarConfirmacao, montarLinkWhatsApp } from '../../utils/mensagens';
 import { infoPresenca } from '../../utils/presenca';
 
@@ -63,7 +62,6 @@ export default function AssistenteScreen() {
     chamada,
     mensalidades,
     pagamentos,
-    nomeMotorista: obterSessao()?.nomeUsuario,
   };
 
   const leitura = useLeituraEmVoz();

@@ -1,7 +1,9 @@
 const googleMapsApiKey = process.env.GOOGLE_MAPS_API_KEY?.trim();
 const googleAndroidCertSha1 = process.env.GOOGLE_ANDROID_CERT_SHA1?.replace(/:/g, '').trim();
 const iaApiUrl = process.env.IA_API_URL?.trim().replace(/\/+$/, '');
-const coreApiUrl = process.env.CORE_API_URL?.trim().replace(/\/+$/, '');
+const apiHost = process.env.API_HOST?.trim()
+  .replace(/^https?:\/\//, '')
+  .replace(/[:/].*$/, '');
 
 module.exports = {
   expo: {
@@ -32,7 +34,6 @@ module.exports = {
       'expo-router',
       'expo-font',
       'expo-status-bar',
-      'expo-secure-store',
       [
         'expo-splash-screen',
         {
@@ -77,8 +78,8 @@ module.exports = {
       ia: {
         ...(iaApiUrl ? { apiUrl: iaApiUrl } : {}),
       },
-      coreApi: {
-        ...(coreApiUrl ? { apiUrl: coreApiUrl } : {}),
+      api: {
+        ...(apiHost ? { host: apiHost } : {}),
       },
       eas: {
         projectId: '2b22f798-bcaf-477f-8f48-c6b74a3a9f76',

@@ -43,15 +43,14 @@ export default function LoginScreen() {
   const handleLogin = async () => {
     const result = validateLoginForm({ email, senha });
     setErrors(result.errors);
-    if (!result.isValid || loading) return;
+    if (!result.isValid) return;
 
     setLoading(true);
     try {
-      await entrar(email, senha);
+      await entrar(email.trim(), senha);
       router.replace('/(app)');
-    } catch (error) {
-      if (error.status === 401) setErrors({ senha: error.message });
-      else Alert.alert('Não foi possível entrar', error.message);
+    } catch (erro) {
+      Alert.alert('Não foi possível entrar', erro.message);
     } finally {
       setLoading(false);
     }

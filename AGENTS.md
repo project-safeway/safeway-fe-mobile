@@ -9,9 +9,9 @@ Responda sempre em **português**.
 App mobile do SafeWay para o **motorista de transporte escolar** (projeto integrador da SPTech). Ele porta para o celular as funcionalidades do front-end web e acrescenta um assistente por voz.
 
 - **Funcionalidades:** login/cadastro, início, alunos agrupados por escola (cadastro e edição de aluno e escola), itinerários (cadastro, edição com arrastar para ordenar, histórico), rota com mapa e chamada de presença, financeiro (gráficos, mensalidades, despesas) e perfil.
-- **Assistente (aba Assistente):** o motorista fala ou digita ("o Enzo entrou na van", "deixei a Valentina na escola", "tô parado no trânsito", "onde tem gasolina mais barata?"). A transcrição é feita no celular; o texto vai para a **safeway-ia-api** (Python), que grava presenças na core-api e devolve ações: presença marcada, **rascunhos de mensagem** aos responsáveis (o app abre o WhatsApp com o texto; o envio final é do motorista) e **postos** com preço da ANP. A resposta é lida em voz alta (`expo-speech`, com botão de silenciar). Contrato: `../CONTRATO-IA.md` (fonte única; não mude sozinho).
-- **Estado atual: integração parcial.** Com `CORE_API_URL` preenchido, **login, itinerários (lista e rota) e chamada** usam a safeway-core-api; com `IA_API_URL`, o assistente usa a ia-api. Vazios, tudo volta aos mocks. **Continuam mockados:** cadastro de conta, alunos/escolas, cadastro/edição/exclusão/histórico de itinerário, perfil e financeiro. Também é real a Routes API do Google (caminho pelas ruas na rota).
-- **Fonte da verdade:** o front-end web (`../front-end/src/pages/*.jsx`) define telas, campos e regras. Os mocks usam só os campos que a API devolve.
+- **Assistente (aba Assistente):** o motorista fala ou digita ("o Enzo entrou na van", "deixei a Valentina na escola", "tô parado no trânsito", "onde tem gasolina mais barata?"). A transcrição é feita no celular; o texto vai para a **safeway-ia-api** (Python), que grava presenças na API core e devolve ações: presença marcada, **rascunhos de mensagem** aos responsáveis (o app abre o WhatsApp com o texto; o envio final é do motorista) e **postos** com preço da ANP. A resposta é lida em voz alta (`expo-speech`, com botão de silenciar). Contrato: `../CONTRATO-IA.md` (fonte única; não mude sozinho).
+- **Estado atual: integrado ao back-end.** As telas chamam a API core (Java/Spring, porta 8080) e a API financeira (porta 8081) no IP do `API_HOST`, sem deploy. O assistente chama a ia-api em `IA_API_URL`; com ela vazia, responde com o mock (`services/iaMock.js`). `data/mock.js` fica no projeto como referência, mas nenhuma tela importa dele.
+- **Fonte da verdade:** telas e regras vêm do front-end web (`../front-end/src/pages/*.jsx`); **contrato de dados** vem dos DTOs do back-end (`../safeway-core-api/src/main/java/com/safeway/tech/api/dto`, `../safeway-financial-api`). O web legado usa a API antiga em português e não serve de contrato.
 - **Fora de escopo:** o fluxo de **pais/responsáveis foi vetado**. Não crie telas nem login para eles.
 
 ## Tech stack
@@ -23,7 +23,6 @@ App mobile do SafeWay para o **motorista de transporte escolar** (projeto integr
 | Mapa | `react-native-maps 1.27.2` (Google Maps) + Routes API via `fetch` |
 | Localização | `expo-location` |
 | Voz | `expo-speech-recognition ^57.1.1` (fala → texto, `pt-BR`) e `expo-speech ~57.0.3` (leitura da resposta) |
-| Sessão | `expo-secure-store ~57.0.4` (JWT da core-api; sem o módulo nativo a sessão fica só na memória) |
 | Gráficos | `react-native-svg 15.15.4` (rosca); barras feitas com `View` |
 | Animação/gestos | `react-native-reanimated 4.5.1`, `react-native-worklets`, `react-native-gesture-handler`, `react-native-sortables` |
 | Ícones | `@expo/vector-icons` (Ionicons) |
@@ -65,15 +64,15 @@ app/                         Rotas (Expo Router: cada arquivo é uma tela)
     financeiro/              index (dashboard), mensalidades, despesas, despesa (criar/editar)
     perfil.jsx
 components/                  Button, Input, Select, Checkbox, Card, ScreenHeader, BackHeader,
-                             KeyboardScreen, EscolaForm, charts/ (BarChart, DonutChart), financeiro/,
+                             KeyboardScreen, EscolaForm, EstadoCarregamento, charts/ (BarChart, DonutChart), financeiro/,
                              assistente/ (CartaoMensagem, CartaoPostos)
-contexts/                    FinanceiroContext (mensalidades/pagamentos), ChamadaContext (rota em andamento,
-                             status por aluno PRESENTE/AUSENTE/ENTREGUE, grava na core-api)
-hooks/                       useKeyboardBottomInset, useTranscricao, useLeituraEmVoz
-services/                    api.js (cliente HTTP: Bearer, tempo limite, 401 → login), sessao.js (SecureStore),
-                             auth.js (login/logout), chamada.js (itinerários + chamada), localizacao.js,
-                             rotas.js (Routes API), ia.js (ia-api ou mock), iaMock.js
-data/mock.js                 Todos os mocks, no formato das respostas da API
+contexts/                    FinanceiroContext (mensalidades/pagamentos da API), ChamadaContext (chamada aberta na API,
+                             status por aluno PRESENTE/AUSENTE/ENTREGUE ↔ PRESENT/ABSENT/DELIVERED)
+hooks/                       useCarregar (busca no foco), useKeyboardBottomInset, useTranscricao, useLeituraEmVoz
+services/                    api.js (cliente HTTP, token em memória, erros), auth, usuario, escolas, alunos,
+                             itinerarios, chamadas, financeiro, rotas.js (Routes API), localizacao.js,
+                             ia.js (ia-api ou mock), iaMock.js
+data/mock.js                 Mocks antigos, só referência (nenhuma tela importa)
 utils/                       formatters, validators, financeiro (KPIs, séries), trajeto, polyline,
                              mensagens (telefone, WhatsApp, mapa, confirmação por voz), presenca
 constants/colors.js          Paleta (única fonte de cores)
@@ -92,28 +91,29 @@ Repositórios irmãos (mesma pasta `../`): `front-end` (web React), `safeway-cor
 - **Imports:** relativos (`../../components/Button`); não há alias.
 - **Estilos:** `StyleSheet.create` no fim do arquivo; cores só de `constants/colors.js` (se precisar de uma nova, adicione lá).
 - **Telas:** `SafeAreaView` com `edges` explícito; cabeçalho com `ScreenHeader` (abas) ou `BackHeader` (telas internas); formulários dentro de `KeyboardScreen`.
-- **Mocks e endpoints:** ações que chamam (ou vão chamar) a API ficam no contexto/serviço, com o endpoint no JSDoc e um log `console.log('[mock] PATCH /api/v1/...', body)` no ramo mock. Nas integradas, o serviço escolhe entre API e mock com `usandoMockCore()` (`services/api.js`); a tela não sabe qual está em uso.
-- **IDs:** a core-api usa **UUID string**; os mocks usam número. Compare com `String(a) === String(b)` e nunca faça conta com id.
+- **Chamadas à API:** sempre por uma função em `services/<domínio>.js` (com o endpoint no JSDoc) usando `apiCore` ou `apiFinanceiro` de `services/api.js`; telas não usam `fetch` direto. Leitura de tela com `useCarregar` + `EstadoCarregamento`; erro de ação vira `Alert.alert(título, erro.message)`. Não há fallback para mock (exceto o assistente, com `IA_API_URL` vazio).
+- **Formatos da API core:** ids UUID (string), horários `"HH:mm:ss"`, datas `"YYYY-MM-DD"`, enums em inglês (`TO_SCHOOL`/`FROM_SCHOOL`, `PRESENT`/`ABSENT`/`DELIVERED`, `IN_PROGRESS`/`FINISHED`/`CANCELLED`, `DAYCARE_CENTER`...). Erros vêm em texto puro. A presença fica em português no app (`ChamadaContext` traduz), porque a IA e o contrato da ia-api usam `PRESENTE`/`AUSENTE`/`ENTREGUE`.
 - **Textos de UI:** português, com acentuação correta. Ações destrutivas pedem confirmação com `Alert.alert`.
 - **Comentários:** só para restrições que o código não mostra. Nada de comentário narrando a linha seguinte.
 - **Commits:** conventional commits em português (`feat: tela de chat com IA`, `fix: ...`).
 
 ## Restrições
 
-- **Nunca** commitar nem imprimir a chave do Google. Ela vive no `.env` (gitignored) em `GOOGLE_MAPS_API_KEY`; o SHA-1 em `GOOGLE_ANDROID_CERT_SHA1`; a URL da IA em `IA_API_URL`; a da core-api em `CORE_API_URL`. Variável nova → atualizar `.env.example` e o README.
-- **Nunca** imprimir nem logar o JWT (`accessToken`). Ele fica no `expo-secure-store` (`services/sessao.js`), não em AsyncStorage.
+- **Nunca** commitar nem imprimir a chave do Google. Ela vive no `.env` (gitignored) em `GOOGLE_MAPS_API_KEY`; o SHA-1 em `GOOGLE_ANDROID_CERT_SHA1`; a URL da IA em `IA_API_URL`; o IP do back-end em `API_HOST`. Variável nova → atualizar `.env.example` e o README. O EAS **não** recebe o `.env`: a chave do mapa vai com `eas env:create`.
+- O token JWT fica **só em memória** (`services/api.js`), por decisão do usuário. Não persista sem ele pedir. Nunca imprima nem logue o token.
 - O app **nunca envia** mensagem aos responsáveis: só abre `https://wa.me/<telefone>?text=...` (`utils/mensagens.js`) depois de o motorista tocar em Enviar ou dizer "pode mandar".
+- Back-end: mudanças só **aditivas**, na branch `feat/integracao-mobile` do `../safeway-core-api` (commits em inglês, padrão do repo). Não altere contrato existente.
 - O EAS **não** recebe o `.env`; variáveis do build vão com `eas env:create`.
 - Biblioteca **nativa** nova (ou plugin/permissão nova no `app.config.js`) exige **APK novo**. Prefira soluções só em JS e avise o usuário quando o APK for necessário.
 - Módulo nativo deve ser carregado de forma que o app **não quebre no Expo Go** (ex.: `requireOptionalNativeModule`, como em `hooks/useTranscricao.js`).
 - Não troque `softwareKeyboardLayoutMode: 'pan'` nem o padrão de teclado (`KeyboardScreen` + `useKeyboardBottomInset`) sem testar todas as telas com formulário.
 - `eas build:configure` não edita config dinâmica: mudanças de EAS vão à mão no `app.config.js`.
 - Escopo: quando o usuário disser "corrige somente isso", não mexa em mais nada.
-- Não invente campos nos mocks: confira no web ou na API.
+- Não invente campos: confira nos DTOs do back-end.
 
 ## Definição de pronto
 
-1. Comportamento igual ao web (quando existir equivalente), com dados mockados no formato da API.
+1. Comportamento igual ao web (quando existir equivalente), com os campos exatamente como a API devolve.
 2. `ReadLints` sem erros nos arquivos editados.
 3. `npx expo export --platform android ...` termina sem erro.
 4. `npx expo-doctor` com 21/21.
@@ -151,11 +151,14 @@ Repositórios irmãos (mesma pasta `../`): `front-end` (web React), `safeway-cor
 | Acentos viram `�` em arquivo criado pelo terminal | `Set-Content` do PowerShell 5 grava em ANSI | Usar a ferramenta de escrita de arquivos ou `[IO.File]::WriteAllText(..., UTF8Encoding($false))` |
 | Comando rodou na pasta errada | O cwd do shell persiste entre chamadas | Sempre `cd "<caminho absoluto>"` no início |
 | Percentuais da legenda somam 101% | Arredondamento simples | Método do maior resto (`utils/financeiro.js`) |
-| Login dá "Sem conexão com o servidor" | `CORE_API_URL` com `localhost` (no celular aponta para o próprio celular) ou PC em outra rede/firewall | Usar o IP do PC na rede (`http://192.168.x.x:8080`) e liberar a porta no firewall |
-| Volta para o login sozinho | A core-api ou a ia-api respondeu 401 (token expirado ou chave RSA diferente) | Entrar de novo; conferir se a ia-api usa o mesmo `pub.key` da core-api |
-| Precisa entrar de novo toda vez que abre o app | APK sem `expo-secure-store` (sessão só na memória) | Gerar APK novo |
+| "Não foi possível conectar ao servidor" | `API_HOST` errado, outra rede ou firewall | Conferir IP (`ipconfig`), mesma Wi-Fi, liberar 8080/8081/8000 no Firewall do Windows |
+| Cadastro de escola/aluno: "Não foi possível localizar o endereço" | Geocoding falhou na API core | Conferir endereço e a chave Google configurada no back-end |
+| "A API financeira recusou o login" | Financeira com par RSA diferente da core | Usar as mesmas chaves RSA nas duas APIs |
+| Mensalidade não aparece após cadastrar aluno | RabbitMQ ou API financeira parados | Subir RabbitMQ e a API financeira |
+| HTTP bloqueado (`Network request failed`) só em APK preview/production | Android bloqueia HTTP sem TLS fora do debug | Usar o development build; liberar cleartext exige config nativa + APK novo |
+| Assistente volta para o login | A ia-api respondeu 401 (token expirado ou chave RSA diferente) | Entrar de novo; conferir se a ia-api usa o mesmo `keys/pub.key` da core-api |
 | Resposta do assistente não é lida em voz alta / sem botão de som | APK sem `expo-speech` | Gerar APK novo |
-| `registrar-presenca` com `ENTREGUE` dá 400 | core-api sem o valor novo no `StatusPresencaEnum` | Atualizar a core-api (contrato) |
+| "addViewAt: failed to insert view" ao abrir a rota | Mapa nativo sem chave do Google no APK | A tela mostra "Mapa indisponível" quando o Metro não tem a chave; com a chave, gerar APK com `GOOGLE_MAPS_API_KEY` no EAS |
 
 ## Hábitos de prompt
 
@@ -173,17 +176,13 @@ Repositórios irmãos (mesma pasta `../`): `front-end` (web React), `safeway-cor
 
 ## MCP e integração
 
-Nenhum servidor MCP está configurado para este projeto. Não tente buscar dados reais via MCP: o app fala com as APIs por HTTP, e o agente valida com os mocks (`data/mock.js`) e scripts Node.
+Nenhum servidor MCP está configurado para este projeto. O back-end roda só na máquina do usuário (sem deploy), então o agente não tem acesso aos dados reais: valide contratos lendo os DTOs/controllers em `../safeway-core-api` e `../safeway-financial-api` e a collection do Postman que o usuário fornecer (pode estar desatualizada; o código é a referência).
 
-### Integração
+### Assistente (safeway-ia-api)
 
 | Serviço | Variável | O que o app usa |
 | --- | --- | --- |
-| safeway-core-api (Java) | `CORE_API_URL` | `POST /auth/v2/login`; `GET /itinerarios`, `GET /itinerarios/{id}`, `GET /itinerarios/{id}/alunos` (coordenadas); `POST /chamada/iniciar/{itinerarioId}`; `PUT /chamada/{chamadaId}/registrar-presenca`; `PUT /chamada/alterar/{itinerarioId}?status=FINALIZADA` (ou `CANCELADA`) |
-| safeway-ia-api (Python) | `IA_API_URL` | `POST /ia/mensagens` com `conversaId`, `texto`, `itinerarioId`, `localizacao` |
-| Google Routes API | `GOOGLE_MAPS_API_KEY` | Caminho pelas ruas na tela da rota |
+| safeway-ia-api (Python) | `IA_API_URL` | `POST /ia/mensagens` com `conversaId`, `texto`, `itinerarioId` (UUID da rota) e `localizacao`, levando `Authorization: Bearer <token do login>` |
 
-- Toda chamada à core-api e à ia-api leva `Authorization: Bearer <accessToken>` (`services/api.js`). 401 numa rota autenticada apaga a sessão e volta ao login (`aoExpirarSessao` em `app/_layout.jsx`).
-- Em `PUT /chamada/alterar/{id}` o `{id}` é o **do itinerário** (a core-api procura a chamada `EM_ANDAMENTO` dele); em `registrar-presenca` é o **da chamada**.
-- Erros da core-api vêm como texto puro; os da ia-api como `{ "detail": "..." }`. `requisitar` trata os dois.
-- Variável vazia = mock daquele serviço. Dá para combinar (ex.: core-api real + IA mockada; o mock da IA só acha telefone dos alunos de `data/mock.js`).
+- A ia-api valida o mesmo JWT da API core e chama a core em nome do motorista (`/routes/{id}/attendances`, `/routes/{id}/stops`, `/students/{id}`, `/attendances/{id}/presences`).
+- Erros da ia-api vêm como `{ "detail": "..." }`; 401 volta ao login. `IA_API_URL` vazio = mock local.

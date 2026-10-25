@@ -3,14 +3,18 @@ import { router } from 'expo-router';
 import { BackHeader } from '../../../components/BackHeader';
 import { EscolaForm } from '../../../components/EscolaForm';
 import { KeyboardScreen } from '../../../components/KeyboardScreen';
+import { criarEscola } from '../../../services/escolas';
 
 export default function CadastroEscolaScreen() {
   const cadastrar = async (payload) => {
-    console.log('[mock] POST /escolas', payload);
-    await new Promise((resolve) => setTimeout(resolve, 500));
-    Alert.alert('Escola cadastrada', 'Cadastro mockado com sucesso!', [
-      { text: 'OK', onPress: () => router.back() },
-    ]);
+    try {
+      await criarEscola(payload);
+      Alert.alert('Escola cadastrada', 'Escola cadastrada com sucesso!', [
+        { text: 'OK', onPress: () => router.back() },
+      ]);
+    } catch (erro) {
+      Alert.alert('Não foi possível cadastrar', erro.message);
+    }
   };
 
   return (

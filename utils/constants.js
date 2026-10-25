@@ -19,14 +19,16 @@ export const HORARIO_OPTIONS = Array.from({ length: (22 - 5) * 4 + 1 }, (_, i) =
 });
 
 export const TIPO_VIAGEM_OPTIONS = [
-  { value: 'SO_IDA', label: 'Ida' },
-  { value: 'SO_VOLTA', label: 'Volta' },
+  { value: 'TO_SCHOOL', label: 'Ida' },
+  { value: 'FROM_SCHOOL', label: 'Volta' },
 ];
 
+export const TIPO_VIAGEM_LABELS = { TO_SCHOOL: 'Ida', FROM_SCHOOL: 'Volta' };
+
 export const STATUS_CHAMADA_LABELS = {
-  EM_ANDAMENTO: 'Em Andamento',
-  FINALIZADA: 'Finalizada',
-  CANCELADA: 'Cancelada',
+  IN_PROGRESS: 'Em Andamento',
+  FINISHED: 'Finalizada',
+  CANCELLED: 'Cancelada',
 };
 
 export const REGEX_PATTERNS = {
