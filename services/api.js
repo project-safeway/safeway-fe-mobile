@@ -24,6 +24,16 @@ const host = () => {
   return typeof valor === 'string' && valor ? valor : null;
 };
 
+export function fonteImagemAutenticada(caminho, versao) {
+  const ip = host();
+  if (!ip) throw new ErroApi('Configure API_HOST no .env com o IP da máquina do back-end e reinicie o Expo.', 0);
+  return {
+    uri: `http://${ip}:${PORTA_CORE}${caminho}${montarQuery({ v: versao })}`,
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    cache: 'reload',
+  };
+}
+
 function montarQuery(query) {
   const partes = Object.entries(query || {})
     .filter(([, valor]) => valor !== undefined && valor !== null && valor !== '')
@@ -59,16 +69,17 @@ async function requisicao(porta, caminho, { method = 'GET', body, query, autenti
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TEMPO_LIMITE_MS);
+  const multipart = body instanceof FormData;
   let response;
   try {
     response = await fetch(`http://${ip}:${porta}${caminho}${montarQuery(query)}`, {
       method,
       headers: {
         Accept: 'application/json',
-        ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+        ...(body !== undefined && !multipart ? { 'Content-Type': 'application/json' } : {}),
         ...(autenticado && token ? { Authorization: `Bearer ${token}` } : {}),
       },
-      body: body !== undefined ? JSON.stringify(body) : undefined,
+      body: body !== undefined ? (multipart ? body : JSON.stringify(body)) : undefined,
       signal: controller.signal,
     });
   } catch {

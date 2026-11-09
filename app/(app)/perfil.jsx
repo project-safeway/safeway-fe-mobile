@@ -22,7 +22,13 @@ import {
   isValidPlaca,
 } from '../../utils/validators';
 import { maskPhone, maskPlaca } from '../../utils/formatters';
-import { atualizarUsuario, buscarUsuario } from '../../services/usuario';
+import {
+  atualizarUsuario,
+  buscarUsuario,
+  atualizarFotoUsuario,
+  removerFotoUsuario,
+  fonteFotoUsuario,
+} from '../../services/usuario';
 import { sair } from '../../services/auth';
 
 export default function PerfilScreen() {
@@ -33,9 +39,15 @@ export default function PerfilScreen() {
   const [telefone, setTelefone] = useState('');
   const [veiculo, setVeiculo] = useState('');
   const [placa, setPlaca] = useState('');
-  const [fotoUri, setFotoUri] = useState(null);
+  const [fotoRemota, setFotoRemota] = useState(null);
+  const [fotoSelecionada, setFotoSelecionada] = useState(null);
+  const [fotoAlterada, setFotoAlterada] = useState(false);
+  const [erroFoto, setErroFoto] = useState(false);
   const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);
+  const fonteFoto = fotoAlterada
+    ? (fotoSelecionada ? { uri: fotoSelecionada.uri } : null)
+    : fotoRemota;
 
   const preencher = (dados) => {
     setUsuario(dados);
@@ -44,6 +56,10 @@ export default function PerfilScreen() {
     setTelefone(maskPhone(dados.primaryPhoneNumber ?? ''));
     setVeiculo(dados.transport?.model ?? '');
     setPlaca(maskPlaca(dados.transport?.licensePlate ?? ''));
+    setFotoRemota(dados.hasProfilePhoto ? fonteFotoUsuario() : null);
+    setFotoSelecionada(null);
+    setFotoAlterada(false);
+    setErroFoto(false);
   };
 
   const carregar = () => {
@@ -52,6 +68,16 @@ export default function PerfilScreen() {
   };
 
   useEffect(carregar, []);
+
+  const selecionarFoto = (asset) => {
+    if (asset.fileSize > 5 * 1024 * 1024) {
+      Alert.alert('Foto muito grande', 'Escolha uma imagem de até 5 MB.');
+      return;
+    }
+    setFotoSelecionada(asset);
+    setFotoAlterada(true);
+    setErroFoto(false);
+  };
 
   const pickFromLibrary = async () => {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -66,7 +92,7 @@ export default function PerfilScreen() {
       quality: 0.8,
     });
     if (!result.canceled && result.assets?.[0]?.uri) {
-      setFotoUri(result.assets[0].uri);
+      selecionarFoto(result.assets[0]);
     }
   };
 
@@ -82,16 +108,25 @@ export default function PerfilScreen() {
       quality: 0.8,
     });
     if (!result.canceled && result.assets?.[0]?.uri) {
-      setFotoUri(result.assets[0].uri);
+      selecionarFoto(result.assets[0]);
     }
   };
 
   const changePhoto = () => {
+    if (loading) return;
     Alert.alert('Foto de perfil', 'Escolha uma opção', [
       { text: 'Tirar foto', onPress: takePhoto },
       { text: 'Escolher da galeria', onPress: pickFromLibrary },
-      ...(fotoUri
-        ? [{ text: 'Remover foto', style: 'destructive', onPress: () => setFotoUri(null) }]
+      ...(fonteFoto
+        ? [{
+          text: 'Remover foto',
+          style: 'destructive',
+          onPress: () => {
+            setFotoSelecionada(null);
+            setFotoAlterada(true);
+            setErroFoto(false);
+          },
+        }]
         : []),
       { text: 'Cancelar', style: 'cancel' },
     ]);
@@ -108,6 +143,7 @@ export default function PerfilScreen() {
     if (Object.keys(next).length) return;
 
     setLoading(true);
+    let dadosSalvos = false;
     try {
       const atualizado = await atualizarUsuario({
         name: nome.trim(),
@@ -120,10 +156,24 @@ export default function PerfilScreen() {
           capacity: usuario.transport?.capacity,
         },
       });
-      preencher(atualizado);
+      dadosSalvos = true;
+      if (fotoAlterada) {
+        if (fotoSelecionada) {
+          await atualizarFotoUsuario(fotoSelecionada);
+        } else {
+          await removerFotoUsuario();
+        }
+      }
+      preencher({
+        ...atualizado,
+        hasProfilePhoto: fotoAlterada ? !!fotoSelecionada : atualizado.hasProfilePhoto,
+      });
       Alert.alert('Perfil atualizado', 'Seus dados foram salvos.');
     } catch (erro) {
-      Alert.alert('Não foi possível salvar', erro.message);
+      Alert.alert(
+        dadosSalvos ? 'Dados salvos, mas a foto não foi atualizada' : 'Não foi possível salvar',
+        erro.message
+      );
     } finally {
       setLoading(false);
     }
@@ -156,11 +206,19 @@ export default function PerfilScreen() {
       <View style={styles.avatarWrap}>
         <TouchableOpacity
           onPress={changePhoto}
+          disabled={loading}
           accessibilityLabel="Alterar foto de perfil"
           activeOpacity={0.85}
         >
-          {fotoUri ? (
-            <Image source={{ uri: fotoUri }} style={styles.avatarImg} />
+          {fonteFoto && !erroFoto ? (
+            <Image
+              source={fonteFoto}
+              style={styles.avatarImg}
+              onError={() => {
+                setErroFoto(true);
+                Alert.alert('Não foi possível carregar a foto', 'Tente abrir o perfil novamente.');
+              }}
+            />
           ) : (
             <View style={styles.avatar}>
               <Ionicons name="person" size={40} color={colors.white} />
