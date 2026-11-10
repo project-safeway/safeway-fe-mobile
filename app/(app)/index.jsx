@@ -1,11 +1,12 @@
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { useEffect, useState } from 'react';
+import { Alert, Image, View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Card } from '../../components/Card';
 import { colors } from '../../constants/colors';
 import { useCarregar } from '../../hooks/useCarregar';
-import { buscarUsuario } from '../../services/usuario';
+import { buscarUsuario, carregarFotoUsuario, descartarFotoTemporaria } from '../../services/usuario';
 
 const modules = [
   {
@@ -33,7 +34,30 @@ const modules = [
 
 export default function HomeScreen() {
   const { dados: usuario } = useCarregar(buscarUsuario);
+  const [fotoUri, setFotoUri] = useState(null);
   const primeiroNome = usuario?.name?.split(' ')[0];
+
+  useEffect(() => {
+    let ativo = true;
+    let arquivo = null;
+    setFotoUri(null);
+    if (usuario?.hasProfilePhoto) {
+      carregarFotoUsuario().then((foto) => {
+        if (!ativo) {
+          descartarFotoTemporaria(foto);
+          return;
+        }
+        arquivo = foto;
+        setFotoUri(foto.uri);
+      }).catch((erro) => {
+        if (ativo) Alert.alert('Não foi possível carregar a foto', erro.message);
+      });
+    }
+    return () => {
+      ativo = false;
+      descartarFotoTemporaria(arquivo);
+    };
+  }, [usuario]);
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -50,7 +74,19 @@ export default function HomeScreen() {
             accessibilityLabel="Abrir perfil"
           >
             <View style={styles.avatar}>
-              <Ionicons name="person" size={22} color={colors.white} />
+              {fotoUri ? (
+                <Image
+                  source={{ uri: fotoUri }}
+                  style={styles.avatarImg}
+                  onError={(evento) => {
+                    console.warn('[home] Falha ao carregar foto:', evento.nativeEvent.error);
+                    setFotoUri(null);
+                    Alert.alert('Não foi possível carregar a foto', 'Abra o perfil para tentar novamente.');
+                  }}
+                />
+              ) : (
+                <Ionicons name="person" size={22} color={colors.white} />
+              )}
             </View>
           </TouchableOpacity>
         </View>
@@ -104,7 +140,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
   },
+  avatarImg: { width: '100%', height: '100%' },
   section: {
     fontSize: 16,
     fontWeight: '700',

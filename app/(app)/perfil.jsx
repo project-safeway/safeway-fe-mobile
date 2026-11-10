@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -27,7 +27,8 @@ import {
   buscarUsuario,
   atualizarFotoUsuario,
   removerFotoUsuario,
-  fonteFotoUsuario,
+  carregarFotoUsuario,
+  descartarFotoTemporaria,
 } from '../../services/usuario';
 import { sair } from '../../services/auth';
 
@@ -45,6 +46,9 @@ export default function PerfilScreen() {
   const [erroFoto, setErroFoto] = useState(false);
   const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);
+  const fotoArquivoRef = useRef(null);
+  const fotoCarregamentoRef = useRef(0);
+  const montadoRef = useRef(true);
   const fonteFoto = fotoAlterada
     ? (fotoSelecionada ? { uri: fotoSelecionada.uri } : null)
     : fotoRemota;
@@ -56,18 +60,48 @@ export default function PerfilScreen() {
     setTelefone(maskPhone(dados.primaryPhoneNumber ?? ''));
     setVeiculo(dados.transport?.model ?? '');
     setPlaca(maskPlaca(dados.transport?.licensePlate ?? ''));
-    setFotoRemota(dados.hasProfilePhoto ? fonteFotoUsuario() : null);
     setFotoSelecionada(null);
     setFotoAlterada(false);
     setErroFoto(false);
   };
 
-  const carregar = () => {
-    setErroCarregamento(null);
-    buscarUsuario().then(preencher).catch(setErroCarregamento);
+  const carregarFoto = async (temFoto) => {
+    const carregamento = ++fotoCarregamentoRef.current;
+    descartarFotoTemporaria(fotoArquivoRef.current);
+    fotoArquivoRef.current = null;
+    setFotoRemota(null);
+    if (!temFoto) return;
+    const arquivo = await carregarFotoUsuario();
+    if (!montadoRef.current || carregamento !== fotoCarregamentoRef.current) {
+      descartarFotoTemporaria(arquivo);
+      return;
+    }
+    fotoArquivoRef.current = arquivo;
+    setFotoRemota({ uri: arquivo.uri });
   };
 
-  useEffect(carregar, []);
+  const carregar = () => {
+    setErroCarregamento(null);
+    buscarUsuario().then((dados) => {
+      if (!montadoRef.current) return;
+      preencher(dados);
+      carregarFoto(dados.hasProfilePhoto).catch((erro) => {
+        if (!montadoRef.current) return;
+        setErroFoto(true);
+        Alert.alert('Não foi possível carregar a foto', erro.message);
+      });
+    }).catch(setErroCarregamento);
+  };
+
+  useEffect(() => {
+    montadoRef.current = true;
+    carregar();
+    return () => {
+      montadoRef.current = false;
+      fotoCarregamentoRef.current++;
+      descartarFotoTemporaria(fotoArquivoRef.current);
+    };
+  }, []);
 
   const selecionarFoto = (asset) => {
     if (asset.fileSize > 5 * 1024 * 1024) {
@@ -117,7 +151,7 @@ export default function PerfilScreen() {
     Alert.alert('Foto de perfil', 'Escolha uma opção', [
       { text: 'Tirar foto', onPress: takePhoto },
       { text: 'Escolher da galeria', onPress: pickFromLibrary },
-      ...(fonteFoto
+      ...(fonteFoto || (usuario?.hasProfilePhoto && !fotoAlterada)
         ? [{
           text: 'Remover foto',
           style: 'destructive',
@@ -164,14 +198,16 @@ export default function PerfilScreen() {
           await removerFotoUsuario();
         }
       }
+      const hasProfilePhoto = fotoAlterada ? !!fotoSelecionada : atualizado.hasProfilePhoto;
       preencher({
         ...atualizado,
-        hasProfilePhoto: fotoAlterada ? !!fotoSelecionada : atualizado.hasProfilePhoto,
+        hasProfilePhoto,
       });
+      await carregarFoto(hasProfilePhoto);
       Alert.alert('Perfil atualizado', 'Seus dados foram salvos.');
     } catch (erro) {
       Alert.alert(
-        dadosSalvos ? 'Dados salvos, mas a foto não foi atualizada' : 'Não foi possível salvar',
+        dadosSalvos ? 'Dados salvos, mas houve um erro com a foto' : 'Não foi possível salvar',
         erro.message
       );
     } finally {
@@ -214,9 +250,13 @@ export default function PerfilScreen() {
             <Image
               source={fonteFoto}
               style={styles.avatarImg}
-              onError={() => {
+              onError={(evento) => {
+                console.warn('[perfil] Falha ao carregar foto:', evento.nativeEvent.error);
                 setErroFoto(true);
-                Alert.alert('Não foi possível carregar a foto', 'Tente abrir o perfil novamente.');
+                Alert.alert('Não foi possível carregar a foto', 'Tente carregar a foto novamente.', [
+                  { text: 'Tentar novamente', onPress: carregar },
+                  { text: 'Fechar', style: 'cancel' },
+                ]);
               }}
             />
           ) : (
@@ -229,6 +269,11 @@ export default function PerfilScreen() {
           </View>
         </TouchableOpacity>
         <Text style={styles.avatarHint}>Toque para alterar a foto</Text>
+        {erroFoto && !fotoAlterada && (
+          <TouchableOpacity onPress={carregar} disabled={loading}>
+            <Text style={styles.avatarHint}>Tentar carregar a foto novamente</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       <Input
