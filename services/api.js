@@ -56,31 +56,40 @@ function mensagemDeErro(status, detalhe) {
   return detalhe || `A API respondeu com erro ${status}.`;
 }
 
-async function requisicao(porta, caminho, { method = 'GET', body, query, autenticado = true } = {}) {
+async function requisicao(porta, caminho, { method = 'GET', body, query, autenticado = true, binario = false } = {}) {
   const ip = host();
   if (!ip) throw new ErroApi('Configure API_HOST no .env com o IP da máquina do back-end e reinicie o Expo.', 0);
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TEMPO_LIMITE_MS);
+  const multipart = body instanceof FormData;
   let response;
   try {
     response = await fetch(`http://${ip}:${porta}${caminho}${montarQuery(query)}`, {
       method,
       headers: {
-        Accept: 'application/json',
-        ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+        Accept: binario ? 'image/jpeg, image/png' : 'application/json',
+        ...(body !== undefined && !multipart ? { 'Content-Type': 'application/json' } : {}),
         ...(autenticado && token ? { Authorization: `Bearer ${token}` } : {}),
       },
-      body: body !== undefined ? JSON.stringify(body) : undefined,
+      body: body !== undefined ? (multipart ? body : JSON.stringify(body)) : undefined,
       signal: controller.signal,
     });
-  } catch {
+  } catch (erro) {
+    console.warn(`[api] ${method} ${caminho} → falha no envio`, erro?.name, erro?.message);
+    if (controller.signal.aborted) {
+      throw new ErroApi('O tempo limite de 15 segundos foi excedido. Tente novamente.', 0);
+    }
     throw new ErroApi(
-      `Não foi possível conectar ao servidor em ${ip}:${porta}. Confira o API_HOST e se o celular está na mesma rede.`,
+      `Não foi possível conectar ao servidor em ${ip}:${porta}. Confira se o back-end está ativo e a conexão está disponível.`,
       0
     );
   } finally {
     clearTimeout(timer);
+  }
+
+  if (response.ok && binario) {
+    return new Uint8Array(await response.arrayBuffer());
   }
 
   const texto = await response.text();
@@ -111,6 +120,7 @@ async function requisicao(porta, caminho, { method = 'GET', body, query, autenti
 
 const cliente = (porta) => ({
   get: (caminho, query) => requisicao(porta, caminho, { query }),
+  getBinario: (caminho) => requisicao(porta, caminho, { binario: true }),
   post: (caminho, body, opcoes) => requisicao(porta, caminho, { method: 'POST', body, ...opcoes }),
   put: (caminho, body) => requisicao(porta, caminho, { method: 'PUT', body }),
   patch: (caminho, body, query) => requisicao(porta, caminho, { method: 'PATCH', body, query }),

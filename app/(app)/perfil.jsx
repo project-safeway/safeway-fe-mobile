@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -22,7 +22,14 @@ import {
   isValidPlaca,
 } from '../../utils/validators';
 import { maskPhone, maskPlaca } from '../../utils/formatters';
-import { atualizarUsuario, buscarUsuario } from '../../services/usuario';
+import {
+  atualizarUsuario,
+  buscarUsuario,
+  atualizarFotoUsuario,
+  removerFotoUsuario,
+  carregarFotoUsuario,
+  descartarFotoTemporaria,
+} from '../../services/usuario';
 import { sair } from '../../services/auth';
 
 export default function PerfilScreen() {
@@ -33,9 +40,18 @@ export default function PerfilScreen() {
   const [telefone, setTelefone] = useState('');
   const [veiculo, setVeiculo] = useState('');
   const [placa, setPlaca] = useState('');
-  const [fotoUri, setFotoUri] = useState(null);
+  const [fotoRemota, setFotoRemota] = useState(null);
+  const [fotoSelecionada, setFotoSelecionada] = useState(null);
+  const [fotoAlterada, setFotoAlterada] = useState(false);
+  const [erroFoto, setErroFoto] = useState(false);
   const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);
+  const fotoArquivoRef = useRef(null);
+  const fotoCarregamentoRef = useRef(0);
+  const montadoRef = useRef(true);
+  const fonteFoto = fotoAlterada
+    ? (fotoSelecionada ? { uri: fotoSelecionada.uri } : null)
+    : fotoRemota;
 
   const preencher = (dados) => {
     setUsuario(dados);
@@ -44,14 +60,58 @@ export default function PerfilScreen() {
     setTelefone(maskPhone(dados.primaryPhoneNumber ?? ''));
     setVeiculo(dados.transport?.model ?? '');
     setPlaca(maskPlaca(dados.transport?.licensePlate ?? ''));
+    setFotoSelecionada(null);
+    setFotoAlterada(false);
+    setErroFoto(false);
+  };
+
+  const carregarFoto = async (temFoto) => {
+    const carregamento = ++fotoCarregamentoRef.current;
+    descartarFotoTemporaria(fotoArquivoRef.current);
+    fotoArquivoRef.current = null;
+    setFotoRemota(null);
+    if (!temFoto) return;
+    const arquivo = await carregarFotoUsuario();
+    if (!montadoRef.current || carregamento !== fotoCarregamentoRef.current) {
+      descartarFotoTemporaria(arquivo);
+      return;
+    }
+    fotoArquivoRef.current = arquivo;
+    setFotoRemota({ uri: arquivo.uri });
   };
 
   const carregar = () => {
     setErroCarregamento(null);
-    buscarUsuario().then(preencher).catch(setErroCarregamento);
+    buscarUsuario().then((dados) => {
+      if (!montadoRef.current) return;
+      preencher(dados);
+      carregarFoto(dados.hasProfilePhoto).catch((erro) => {
+        if (!montadoRef.current) return;
+        setErroFoto(true);
+        Alert.alert('Não foi possível carregar a foto', erro.message);
+      });
+    }).catch(setErroCarregamento);
   };
 
-  useEffect(carregar, []);
+  useEffect(() => {
+    montadoRef.current = true;
+    carregar();
+    return () => {
+      montadoRef.current = false;
+      fotoCarregamentoRef.current++;
+      descartarFotoTemporaria(fotoArquivoRef.current);
+    };
+  }, []);
+
+  const selecionarFoto = (asset) => {
+    if (asset.fileSize > 5 * 1024 * 1024) {
+      Alert.alert('Foto muito grande', 'Escolha uma imagem de até 5 MB.');
+      return;
+    }
+    setFotoSelecionada(asset);
+    setFotoAlterada(true);
+    setErroFoto(false);
+  };
 
   const pickFromLibrary = async () => {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -66,7 +126,7 @@ export default function PerfilScreen() {
       quality: 0.8,
     });
     if (!result.canceled && result.assets?.[0]?.uri) {
-      setFotoUri(result.assets[0].uri);
+      selecionarFoto(result.assets[0]);
     }
   };
 
@@ -82,16 +142,25 @@ export default function PerfilScreen() {
       quality: 0.8,
     });
     if (!result.canceled && result.assets?.[0]?.uri) {
-      setFotoUri(result.assets[0].uri);
+      selecionarFoto(result.assets[0]);
     }
   };
 
   const changePhoto = () => {
+    if (loading) return;
     Alert.alert('Foto de perfil', 'Escolha uma opção', [
       { text: 'Tirar foto', onPress: takePhoto },
       { text: 'Escolher da galeria', onPress: pickFromLibrary },
-      ...(fotoUri
-        ? [{ text: 'Remover foto', style: 'destructive', onPress: () => setFotoUri(null) }]
+      ...(fonteFoto || (usuario?.hasProfilePhoto && !fotoAlterada)
+        ? [{
+          text: 'Remover foto',
+          style: 'destructive',
+          onPress: () => {
+            setFotoSelecionada(null);
+            setFotoAlterada(true);
+            setErroFoto(false);
+          },
+        }]
         : []),
       { text: 'Cancelar', style: 'cancel' },
     ]);
@@ -108,6 +177,7 @@ export default function PerfilScreen() {
     if (Object.keys(next).length) return;
 
     setLoading(true);
+    let dadosSalvos = false;
     try {
       const atualizado = await atualizarUsuario({
         name: nome.trim(),
@@ -120,10 +190,26 @@ export default function PerfilScreen() {
           capacity: usuario.transport?.capacity,
         },
       });
-      preencher(atualizado);
+      dadosSalvos = true;
+      if (fotoAlterada) {
+        if (fotoSelecionada) {
+          await atualizarFotoUsuario(fotoSelecionada);
+        } else {
+          await removerFotoUsuario();
+        }
+      }
+      const hasProfilePhoto = fotoAlterada ? !!fotoSelecionada : atualizado.hasProfilePhoto;
+      preencher({
+        ...atualizado,
+        hasProfilePhoto,
+      });
+      await carregarFoto(hasProfilePhoto);
       Alert.alert('Perfil atualizado', 'Seus dados foram salvos.');
     } catch (erro) {
-      Alert.alert('Não foi possível salvar', erro.message);
+      Alert.alert(
+        dadosSalvos ? 'Dados salvos, mas houve um erro com a foto' : 'Não foi possível salvar',
+        erro.message
+      );
     } finally {
       setLoading(false);
     }
@@ -156,11 +242,23 @@ export default function PerfilScreen() {
       <View style={styles.avatarWrap}>
         <TouchableOpacity
           onPress={changePhoto}
+          disabled={loading}
           accessibilityLabel="Alterar foto de perfil"
           activeOpacity={0.85}
         >
-          {fotoUri ? (
-            <Image source={{ uri: fotoUri }} style={styles.avatarImg} />
+          {fonteFoto && !erroFoto ? (
+            <Image
+              source={fonteFoto}
+              style={styles.avatarImg}
+              onError={(evento) => {
+                console.warn('[perfil] Falha ao carregar foto:', evento.nativeEvent.error);
+                setErroFoto(true);
+                Alert.alert('Não foi possível carregar a foto', 'Tente carregar a foto novamente.', [
+                  { text: 'Tentar novamente', onPress: carregar },
+                  { text: 'Fechar', style: 'cancel' },
+                ]);
+              }}
+            />
           ) : (
             <View style={styles.avatar}>
               <Ionicons name="person" size={40} color={colors.white} />
@@ -171,6 +269,11 @@ export default function PerfilScreen() {
           </View>
         </TouchableOpacity>
         <Text style={styles.avatarHint}>Toque para alterar a foto</Text>
+        {erroFoto && !fotoAlterada && (
+          <TouchableOpacity onPress={carregar} disabled={loading}>
+            <Text style={styles.avatarHint}>Tentar carregar a foto novamente</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       <Input
