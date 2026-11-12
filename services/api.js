@@ -12,6 +12,9 @@ export function definirToken(novoToken) {
   token = novoToken;
 }
 
+/** JWT do login, repassado à API da IA (ela valida com a mesma chave pública do core). */
+export const obterToken = () => token;
+
 export class ErroApi extends Error {
   constructor(mensagem, status) {
     super(mensagem);

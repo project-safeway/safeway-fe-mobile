@@ -1,6 +1,6 @@
 # SafeWay Mobile
 
-Aplicativo mobile do SafeWay para o motorista de transporte escolar, feito com **Expo SDK 57** (React Native 0.86 + Expo Router). Segue as funcionalidades do front-end web (alunos e escolas, itinerários, chamada com rota no mapa e financeiro) e tem um **assistente por voz**. As telas falam com o back-end real: a **API core** (Java/Spring, porta 8080) e a **API financeira** (porta 8081), rodando num PC da mesma rede do celular. Só o assistente ainda responde com mock enquanto a API Python não existe.
+Aplicativo mobile do SafeWay para o motorista de transporte escolar, feito com **Expo SDK 57** (React Native 0.86 + Expo Router). Segue as funcionalidades do front-end web (alunos e escolas, itinerários, chamada com rota no mapa e financeiro) e tem um **assistente por voz**. As telas falam com o back-end real: a **API core** (Java/Spring, porta 8080) e a **API financeira** (porta 8081), rodando num PC da mesma rede do celular. O assistente usa a **safeway-ia-api** (Python, porta 8000) quando `IA_API_URL` está preenchido; vazio, responde com mock.
 
 ## Sumário
 
@@ -13,6 +13,7 @@ Aplicativo mobile do SafeWay para o motorista de transporte escolar, feito com *
 - [5. Rodar localmente com Android Studio (opcional)](#5-rodar-localmente-com-android-studio-opcional)
 - [Quando gerar um APK novo](#quando-gerar-um-apk-novo)
 - [Assistente por voz (IA)](#assistente-por-voz-ia)
+- [Integração com a core-api](#integração-com-a-core-api)
 - [Estrutura do projeto](#estrutura-do-projeto)
 - [Problemas comuns](#problemas-comuns)
 
@@ -54,7 +55,7 @@ cp .env.example .env
 API_HOST=192.168.0.10
 GOOGLE_MAPS_API_KEY=sua_chave_aqui
 GOOGLE_ANDROID_CERT_SHA1=AA:BB:CC:...
-IA_API_URL=
+IA_API_URL=http://192.168.0.10:8000
 ```
 
 | Variável | Para que serve |
@@ -63,6 +64,8 @@ IA_API_URL=
 | `GOOGLE_MAPS_API_KEY` | Mostra o mapa (Maps SDK for Android) e calcula o caminho pelas ruas na tela de rota (Routes API). |
 | `GOOGLE_ANDROID_CERT_SHA1` | SHA-1 da assinatura do app. A Routes API exige esse valor quando a chave é restrita a apps Android. Aceita com ou sem `:`. |
 | `IA_API_URL` | Endereço da API Python do assistente, por exemplo `http://192.168.0.10:8000`. Vazio: o assistente responde com o mock do próprio app. |
+
+> No celular, `localhost` é o próprio celular. Use o **IP do PC na rede Wi-Fi** (no Windows: `ipconfig`, "Endereço IPv4") e libere a porta no firewall.
 
 O `.env` está no `.gitignore`. **Nunca faça commit da chave.**
 
@@ -80,7 +83,7 @@ Sem chave o app funciona normalmente. Só o mapa fica vazio e o caminho da rota 
 
 Não há deploy: o back-end roda no PC e o celular acessa pelo IP da rede local.
 
-1. **API core** (`../back-end`), branch `feat/integracao-mobile`, na porta **8080**. Ela precisa:
+1. **API core** (`../safeway-core-api`), branch `feat/integracao-mobile`, na porta **8080**. Ela precisa:
    - do par de chaves RSA do JWT;
    - de uma chave do Google com a **Geocoding API**, porque cadastrar escola ou aluno converte o endereço em coordenadas. Sem ela, o cadastro devolve erro de endereço não localizado.
 2. **API financeira** (`../safeway-financial-api`) na porta **8081**. Ela precisa:
@@ -138,6 +141,8 @@ No **Git Bash**, lendo direto do `.env`:
 ```bash
 eas env:create --name GOOGLE_MAPS_API_KEY --value "$(grep '^GOOGLE_MAPS_API_KEY=' .env | cut -d= -f2-)" --environment development --visibility sensitive --non-interactive
 eas env:create --name GOOGLE_ANDROID_CERT_SHA1 --value "$(grep '^GOOGLE_ANDROID_CERT_SHA1=' .env | cut -d= -f2-)" --environment development --visibility sensitive --non-interactive
+# Opcional: só se o APK precisar apontar para as APIs sem o Metro (o `npx expo start` já lê o .env)
+eas env:create --name IA_API_URL --value "$(grep '^IA_API_URL=' .env | cut -d= -f2-)" --environment development --visibility plaintext --non-interactive
 ```
 
 No **PowerShell**:
@@ -146,6 +151,8 @@ No **PowerShell**:
 $envs = @{}; Get-Content .env | ForEach-Object { $p = $_ -split '=', 2; if ($p.Count -eq 2) { $envs[$p[0].Trim()] = $p[1].Trim() } }
 eas env:create --name GOOGLE_MAPS_API_KEY --value $envs['GOOGLE_MAPS_API_KEY'] --environment development --visibility sensitive --non-interactive
 eas env:create --name GOOGLE_ANDROID_CERT_SHA1 --value $envs['GOOGLE_ANDROID_CERT_SHA1'] --environment development --visibility sensitive --non-interactive
+# Opcional (ver acima)
+eas env:create --name IA_API_URL --value $envs['IA_API_URL'] --environment development --visibility plaintext --non-interactive
 ```
 
 ### 4.2. Gerar e instalar o APK
@@ -210,31 +217,43 @@ cd android && ./gradlew signingReport
 
 Se você esquecer, o app costuma mostrar um erro do tipo `Cannot find native module ...`.
 
+> **APK novo necessário para o assistente:** entrou `expo-speech` (lê as respostas do assistente) e mudou o texto da permissão de localização. Num APK antigo o app **não quebra**: só não lê as respostas em voz alta.
+
 ## Assistente por voz (IA)
 
-A aba **Assistente** deixa o motorista falar ou digitar pedidos como "o Enzo entrou na van", "a Valentina faltou", "quem ainda falta embarcar?" ou "como está meu financeiro este mês?".
+A aba **Assistente** deixa o motorista falar ou digitar pedidos como "o Enzo entrou na van", "deixei a Valentina na escola", "tô parado no trânsito", "onde tem gasolina mais barata?" ou "como está meu financeiro este mês?".
 
 - **Fala para texto:** feita no próprio celular com [`expo-speech-recognition`](https://github.com/jamsch/expo-speech-recognition), que usa o reconhecimento de voz do Android (o mesmo do teclado do Google). É gratuito e não precisa de chave. Precisa de internet e só funciona no development build; no Expo Go o microfone fica indisponível.
-- **Presença:** só pode ser marcada com uma rota em andamento (aba Itinerário → **Iniciar Rota**). A chamada é compartilhada entre a tela da rota e o assistente, e cada marcação feita pela IA pode ser desfeita.
+- **Presença:** só pode ser marcada com uma rota em andamento (aba Itinerário → **Iniciar Rota**). Cada aluno fica **Presente** (na van), **Ausente** ou **Entregue** (já deixado na escola/casa). A chamada é compartilhada entre a tela da rota e o assistente, e cada marcação feita pela IA pode ser desfeita.
+- **Avisos aos responsáveis:** quando o motorista diz que está no trânsito ou atrasado, o assistente prepara **rascunhos** (um por responsável, só dos alunos a bordo; ou só do aluno citado). Cada cartão tem **Enviar** (abre o WhatsApp com o texto pronto), **Editar** e **Descartar**, e há **Enviar todas**, que abre uma conversa por vez. Também dá para falar "**pode mandar**" (abre a próxima) ou "**cancela**" (descarta as pendentes); essas falas não vão para a IA. **Nada é enviado sozinho:** o envio final é o toque do motorista no WhatsApp.
+- **Postos:** "onde tem gasolina mais barata?" mostra uma lista (revenda, bandeira, endereço, preço e data da coleta da ANP) com botão para abrir no mapa.
+- **Localização:** na primeira vez o assistente pede a localização (para incluir o link de onde a van está nos avisos e procurar postos perto). Sem permissão ou sem sinal, segue sem ela; o envio não espera o GPS mais que ~2,5 s.
+- **Leitura em voz alta:** as respostas são lidas com `expo-speech` (voz do aparelho). O botão de alto-falante no topo silencia.
 - **Respostas:** com `IA_API_URL` vazio, `services/iaMock.js` responde com regras simples sobre os dados já carregados no app (chamada aberta, mensalidades e despesas). Com a URL preenchida, o app chama a API Python.
 
-Contrato esperado da API Python (`POST {IA_API_URL}/ia/mensagens`):
+O contrato completo está em [`../CONTRATO-IA.md`](../CONTRATO-IA.md). Resumo do `POST {IA_API_URL}/ia/mensagens` (com `Authorization: Bearer <token do login>`):
 
 ```json
-{ "conversaId": null, "texto": "o Enzo entrou na van", "itinerarioId": "8f1c2d3e-..." }
+{
+  "conversaId": null,
+  "texto": "tô parado no trânsito",
+  "itinerarioId": "uuid-da-rota-em-andamento",
+  "localizacao": { "latitude": -23.55, "longitude": -46.63 }
+}
 ```
 
 ```json
 {
   "conversaId": "abc123",
-  "resposta": "Pronto, marquei o Enzo como presente.",
-  "acoes": [{ "tipo": "MARCAR_PRESENCA", "alunoId": "5b6a7c8d-...", "nomeAluno": "Enzo Gabriel Silva", "status": "PRESENTE" }]
+  "resposta": "Preparei a mensagem de atraso para os responsáveis de 2 alunos.",
+  "acoes": [{ "tipo": "ENVIAR_MENSAGEM_RESPONSAVEL", "motivo": "ATRASO_GERAL", "alunoId": "uuid", "nomeAluno": "Enzo Gabriel Silva", "responsavelNome": "Mariana Silva", "telefone": "5511987654321", "mensagem": "Olá, Mariana! ..." }]
 }
 ```
 
-- `conversaId` vem `null` na primeira mensagem; a API cria a conversa, guarda o texto no histórico e devolve o id, que o app reenvia nas próximas mensagens.
-- `itinerarioId` é o UUID da rota em andamento, ou `null` se não houver. `alunoId` é o UUID do aluno na API core.
-- `acoes` lista as presenças que a IA marcou. O app aplica na chamada aberta, e essa marcação também é enviada à API core (`PUT /attendances/{id}/presences`, que sobrescreve sem duplicar).
+- `conversaId` vem `null` na primeira mensagem; a API cria a conversa e devolve o id, que o app reenvia nas próximas.
+- `itinerarioId` é o UUID da rota em andamento, ou `null`; `localizacao` é `null` sem permissão/sinal. A requisição leva `Authorization: Bearer` com o token do login.
+- Tipos de ação: `MARCAR_PRESENCA` (a ia-api já gravou na API core com `PUT /attendances/{id}/presences`; o app só atualiza a tela), `ENVIAR_MENSAGEM_RESPONSAVEL` (rascunho) e `SUGERIR_POSTOS`. Contrato completo em `../CONTRATO-IA.md`.
+- 401 da API leva de volta ao login.
 
 ## Estrutura do projeto
 
@@ -250,9 +269,10 @@ app/                     Telas (Expo Router: cada arquivo é uma rota)
     assistente.jsx       Conversa com a IA por voz ou texto
 components/              Componentes reutilizáveis (Input, Select, Button, Card, gráficos...)
 contexts/                Estado compartilhado (FinanceiroContext, ChamadaContext), já ligado à API
-hooks/                   Carregamento de dados (useCarregar), teclado e transcrição de voz (useTranscricao)
+hooks/                   Carregamento de dados (useCarregar), teclado, transcrição de voz (useTranscricao)
+                         e leitura em voz alta (useLeituraEmVoz)
 services/                api.js (cliente HTTP, token, erros), um arquivo por domínio (auth, alunos,
-                         escolas, itinerarios, chamadas, financeiro, usuario), Routes API e IA
+                         escolas, itinerarios, chamadas, financeiro, usuario), Routes API, localização e IA
 data/mock.js             Mocks antigos, mantidos só como referência (as telas não usam mais)
 utils/                   Formatadores, máscaras, validações e regras de negócio
 constants/colors.js      Paleta de cores
@@ -297,6 +317,12 @@ A Routes API falhou. O motivo aparece no terminal do Metro, em `[rota] caminho p
 **O microfone do assistente não funciona**
 - "Só funciona no app instalado pelo development build": você está no Expo Go ou num APK gerado antes da instalação do `expo-speech-recognition`. Gere um APK novo.
 - "Reconhecimento de voz indisponível": instale ou ative o app **Google** / **Serviços de fala do Google** no celular.
+
+**"Não foi possível conectar ao servidor" no login**
+`API_HOST` está errado ou o celular está em outra rede. Use o IP do PC na rede e libere as portas (8080, 8081 e 8000) no firewall do Windows.
+
+**As respostas do assistente não são lidas em voz alta**
+O APK é anterior ao `expo-speech`. Gere um APK novo.
 
 **Mudei o `.env` e nada aconteceu**
 Pare o `npx expo start` e rode de novo. O `.env` só é lido quando o servidor inicia.

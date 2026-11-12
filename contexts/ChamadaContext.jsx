@@ -4,9 +4,28 @@ import * as apiChamadas from '../services/chamadas';
 
 const ChamadaContext = createContext(null);
 
+/** @typedef {'PRESENTE'|'AUSENTE'|'ENTREGUE'} StatusPresenca */
+export const STATUS_PRESENCA = ['PRESENTE', 'AUSENTE', 'ENTREGUE'];
+
+// O app (e a IA) falam português; o core, inglês (PresenceStatusEnum).
+const PARA_API = { PRESENTE: 'PRESENT', AUSENTE: 'ABSENT', ENTREGUE: 'DELIVERED' };
+const DA_API = { PRESENT: 'PRESENTE', ABSENT: 'AUSENTE', DELIVERED: 'ENTREGUE' };
+
+/** Quantos alunos estão em cada status. "A bordo" = PRESENTE. */
+export function contarPresencas(presencas = {}) {
+  const valores = Object.values(presencas);
+  return {
+    aBordo: valores.filter((s) => s === 'PRESENTE').length,
+    ausentes: valores.filter((s) => s === 'AUSENTE').length,
+    entregues: valores.filter((s) => s === 'ENTREGUE').length,
+    total: valores.length,
+  };
+}
+
 /**
  * Chamada da rota em andamento: compartilhada entre a tela da rota e o assistente.
- * Estado: { id, itinerarioId, nomeItinerario, alunos: [{ id, nome }], presencas: { [alunoId]: boolean } }
+ * Estado: { id, itinerarioId, nomeItinerario, alunos: [{ id, nome }], presencas: { [alunoId]: StatusPresenca } }
+ * Aluno ainda não marcado conta como AUSENTE (vira ABSENT ao finalizar).
  */
 export function ChamadaProvider({ children }) {
   const [chamada, setChamadaState] = useState(null);
@@ -41,14 +60,14 @@ export function ChamadaProvider({ children }) {
         .abrirChamada(itinerario.id)
         .then((aberta) => {
           const registradas = Object.fromEntries(
-            (aberta.presences || []).map((p) => [p.studentId, p.presence === 'PRESENT'])
+            (aberta.presences || []).map((p) => [p.studentId, DA_API[p.presence]])
           );
           setChamada({
             id: aberta.id,
             itinerarioId: itinerario.id,
             nomeItinerario: itinerario.name,
             alunos,
-            presencas: Object.fromEntries(alunos.map((a) => [a.id, Boolean(registradas[a.id])])),
+            presencas: Object.fromEntries(alunos.map((a) => [a.id, registradas[a.id] ?? 'AUSENTE'])),
           });
         })
         .finally(() => {
@@ -60,36 +79,43 @@ export function ChamadaProvider({ children }) {
     [setChamada]
   );
 
-  /** PUT /attendances/{id}/presences com { [alunoId]: 'PRESENT' | 'ABSENT' } a cada toque. */
+  /**
+   * Atualiza a tela na hora e grava com PUT /attendances/{id}/presences.
+   * `sincronizar: false` quando a gravação já foi feita (ação da IA): só reflete na tela.
+   * Se a gravação falhar, volta ao status anterior e avisa.
+   * @param {string} alunoId
+   * @param {StatusPresenca} status
+   */
   const marcarPresenca = useCallback(
-    (alunoId, presente) => {
+    (alunoId, status, { sincronizar = true } = {}) => {
       const atual = chamadaRef.current;
-      if (!atual || !(alunoId in atual.presencas)) return;
+      if (!atual || !(alunoId in atual.presencas) || !STATUS_PRESENCA.includes(status)) return Promise.resolve();
       const anterior = atual.presencas[alunoId];
       const alterar = (valor) =>
         setChamada((c) =>
           c?.id === atual.id ? { ...c, presencas: { ...c.presencas, [alunoId]: valor } } : c
         );
 
-      alterar(presente);
-      enfileirar(() =>
-        apiChamadas.registrarPresencas(atual.id, { [alunoId]: presente ? 'PRESENT' : 'ABSENT' })
-      ).catch((erro) => {
-        alterar(anterior);
-        Alert.alert('Presença não registrada', erro.message);
-      });
+      alterar(status);
+      if (!sincronizar) return Promise.resolve();
+      return enfileirar(() => apiChamadas.registrarPresencas(atual.id, { [alunoId]: PARA_API[status] })).catch(
+        (erro) => {
+          alterar(anterior);
+          Alert.alert('Presença não registrada', erro.message);
+        }
+      );
     },
     [enfileirar, setChamada]
   );
 
-  /** Lança como ABSENT quem não está presente e depois POST /attendances/{id}/finish. */
+  /** Lança como ABSENT quem não foi marcado e depois POST /attendances/{id}/finish. */
   const finalizarChamada = useCallback(async () => {
     const atual = chamadaRef.current;
     if (!atual) return;
     await enfileirar(async () => {
       const ausencias = Object.fromEntries(
         Object.entries(atual.presencas)
-          .filter(([, presente]) => !presente)
+          .filter(([, status]) => status === 'AUSENTE')
           .map(([alunoId]) => [alunoId, 'ABSENT'])
       );
       if (Object.keys(ausencias).length) await apiChamadas.registrarPresencas(atual.id, ausencias);

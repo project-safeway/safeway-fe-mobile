@@ -9,7 +9,7 @@ module.exports = {
   expo: {
     name: 'SafeWay',
     slug: 'safeway-fe-mobile',
-    owner: 'gustavosptech',
+    owner: 'safewaysptech',
     version: '1.0.0',
     orientation: 'portrait',
     icon: './assets/icon.png',
@@ -54,7 +54,7 @@ module.exports = {
         'expo-location',
         {
           locationWhenInUsePermission:
-            'O SafeWay usa sua localização para mostrar a van no mapa durante a rota.',
+            'O SafeWay usa sua localização para mostrar a van no mapa durante a rota e, no assistente, para incluir onde você está nos avisos aos responsáveis e sugerir postos próximos.',
         },
       ],
       [
@@ -82,7 +82,7 @@ module.exports = {
         ...(apiHost ? { host: apiHost } : {}),
       },
       eas: {
-        projectId: '3f6f8e0b-8311-42ad-a9bd-e2f5b78c31a9',
+        projectId: '2b22f798-bcaf-477f-8f48-c6b74a3a9f76',
       },
     },
   },

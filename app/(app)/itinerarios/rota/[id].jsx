@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, StyleSheet, FlatList, Switch, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import MapView, { Marker, Polyline } from 'react-native-maps';
+import Constants from 'expo-constants';
 import * as Location from 'expo-location';
 import { useLocalSearchParams, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -15,7 +16,11 @@ import { buildTrajeto } from '../../../../utils/trajeto';
 import { formatEndereco, horaCurta } from '../../../../utils/formatters';
 import { TIPO_VIAGEM_LABELS } from '../../../../utils/constants';
 import { buscarCaminhoPelasRuas } from '../../../../services/rotas';
-import { useChamada } from '../../../../contexts/ChamadaContext';
+import { STATUS_PRESENCA, contarPresencas, useChamada } from '../../../../contexts/ChamadaContext';
+import { STATUS_PRESENCA_INFO } from '../../../../utils/presenca';
+
+// Sem GOOGLE_MAPS_API_KEY no build, o mapa nativo do Android quebra ao inserir os marcadores.
+const MAPA_DISPONIVEL = Boolean(Constants.expoConfig?.extra?.googleMaps?.apiKey);
 
 const SAO_PAULO = { latitude: -23.5613, longitude: -46.6565, latitudeDelta: 0.06, longitudeDelta: 0.06 };
 
@@ -131,7 +136,7 @@ function RotaEmAndamento({ itinerario, paradasApi }) {
   const chamadaAtiva = chamada?.itinerarioId === itinerario.id ? chamada : null;
   const presencas = chamadaAtiva?.presencas ?? {};
   const totalAlunos = paradas.filter((p) => p.tipo === 'aluno').length;
-  const totalPresentes = Object.values(presencas).filter(Boolean).length;
+  const contagem = contarPresencas(presencas);
 
   const linhaRota = caminho?.coordenadas ?? pontosMapa.map((p) => p.coordenada);
 
@@ -163,7 +168,8 @@ function RotaEmAndamento({ itinerario, paradasApi }) {
   const finalizar = () => {
     Alert.alert(
       'Finalizar rota',
-      `Presentes: ${totalPresentes} | Ausentes: ${totalAlunos - totalPresentes}\n\nDeseja finalizar a chamada?`,
+      `Na van: ${contagem.aBordo} | Entregues: ${contagem.entregues} | Ausentes: ${contagem.ausentes}\n\n` +
+        'Quem não foi marcado fica como ausente. Deseja finalizar a chamada?',
       [
         { text: 'Voltar', style: 'cancel' },
         {
@@ -192,37 +198,46 @@ function RotaEmAndamento({ itinerario, paradasApi }) {
 
   const renderParada = ({ item, index }) => {
     const isEscola = item.tipo === 'escola';
-    const presente = Boolean(presencas[item.id]);
+    const statusAtual = presencas[item.id];
     return (
       <View style={[styles.parada, isEscola && styles.paradaEscola]}>
-        <View style={[styles.ordem, isEscola ? styles.ordemEscola : styles.ordemAluno]}>
-          {isEscola ? (
-            <Ionicons name="school" size={16} color={colors.white} />
-          ) : (
-            <Text style={styles.ordemText}>{index + 1}</Text>
-          )}
-        </View>
-        <View style={styles.paradaInfo}>
-          <Text style={[styles.paradaNome, isEscola && styles.paradaNomeEscola]} numberOfLines={1}>
-            {item.nome}
-          </Text>
-          <Text style={styles.paradaMeta} numberOfLines={1}>
-            {isEscola ? item.endereco || item.cidade : item.escola}
-          </Text>
+        <View style={styles.paradaTopo}>
+          <View style={[styles.ordem, isEscola ? styles.ordemEscola : styles.ordemAluno]}>
+            {isEscola ? (
+              <Ionicons name="school" size={16} color={colors.white} />
+            ) : (
+              <Text style={styles.ordemText}>{index + 1}</Text>
+            )}
+          </View>
+          <View style={styles.paradaInfo}>
+            <Text style={[styles.paradaNome, isEscola && styles.paradaNomeEscola]} numberOfLines={1}>
+              {item.nome}
+            </Text>
+            <Text style={styles.paradaMeta} numberOfLines={1}>
+              {isEscola ? item.endereco || item.cidade : item.escola}
+            </Text>
+          </View>
         </View>
         {isEscola ? null : (
-          <View style={styles.presenca}>
-            <Text style={[styles.presencaLabel, presente ? styles.presente : styles.ausente]}>
-              {presente ? 'Presente' : 'Ausente'}
-            </Text>
-            <Switch
-              value={presente}
-              disabled={!chamadaAtiva || enviando}
-              onValueChange={(v) => marcarPresenca(item.id, v)}
-              trackColor={{ false: colors.border, true: colors.successAlt }}
-              thumbColor={colors.white}
-              accessibilityLabel={`Presença de ${item.nome}`}
-            />
+          <View style={styles.statusLinha} accessibilityRole="radiogroup">
+            {STATUS_PRESENCA.map((status) => {
+              const info = STATUS_PRESENCA_INFO[status];
+              const ativo = statusAtual === status;
+              return (
+                <TouchableOpacity
+                  key={status}
+                  style={[styles.statusBtn, ativo && { backgroundColor: info.fundo, borderColor: info.cor }]}
+                  onPress={() => !ativo && marcarPresenca(item.id, status)}
+                  disabled={!chamadaAtiva || enviando}
+                  accessibilityRole="radio"
+                  accessibilityState={{ checked: ativo, disabled: !chamadaAtiva || enviando }}
+                  accessibilityLabel={`${item.nome}: ${info.rotulo}`}
+                >
+                  <Ionicons name={info.icone} size={16} color={ativo ? info.cor : colors.textMuted} />
+                  <Text style={[styles.statusTexto, ativo && { color: info.cor }]}>{info.rotulo}</Text>
+                </TouchableOpacity>
+              );
+            })}
           </View>
         )}
       </View>
@@ -232,34 +247,41 @@ function RotaEmAndamento({ itinerario, paradasApi }) {
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
       <View style={styles.mapWrap}>
-        <MapView
-          ref={mapRef}
-          style={StyleSheet.absoluteFill}
-          initialRegion={pontosMapa[0] ? { ...SAO_PAULO, ...pontosMapa[0].coordenada } : SAO_PAULO}
-          onMapReady={() => enquadrarMapa()}
-          toolbarEnabled={false}
-          showsUserLocation={localizacaoPermitida}
-          showsMyLocationButton={localizacaoPermitida}
-        >
-          {linhaRota.length > 1 ? (
-            <Polyline
-              coordinates={linhaRota}
-              strokeColor={colors.primary}
-              strokeWidth={4}
-              lineDashPattern={caminho ? undefined : [8, 6]}
-            />
-          ) : null}
-          {pontosMapa.map((p) => {
-            const isEscola = p.tipo === 'escola';
-            return (
-              <Marker key={p.key} coordinate={p.coordenada} title={p.nome} description={p.endereco}>
-                <View style={[styles.pin, isEscola ? styles.pinEscola : styles.pinAluno]}>
-                  <Text style={styles.pinText}>{paradas.indexOf(p) + 1}</Text>
-                </View>
-              </Marker>
-            );
-          })}
-        </MapView>
+        {MAPA_DISPONIVEL ? (
+          <MapView
+            ref={mapRef}
+            style={StyleSheet.absoluteFill}
+            initialRegion={pontosMapa[0] ? { ...SAO_PAULO, ...pontosMapa[0].coordenada } : SAO_PAULO}
+            onMapReady={() => enquadrarMapa()}
+            toolbarEnabled={false}
+            showsUserLocation={localizacaoPermitida}
+            showsMyLocationButton={localizacaoPermitida}
+          >
+            {linhaRota.length > 1 ? (
+              <Polyline
+                coordinates={linhaRota}
+                strokeColor={colors.primary}
+                strokeWidth={4}
+                lineDashPattern={caminho ? undefined : [8, 6]}
+              />
+            ) : null}
+            {pontosMapa.map((p) => {
+              const isEscola = p.tipo === 'escola';
+              return (
+                <Marker key={p.key} coordinate={p.coordenada} title={p.nome} description={p.endereco}>
+                  <View style={[styles.pin, isEscola ? styles.pinEscola : styles.pinAluno]}>
+                    <Text style={styles.pinText}>{paradas.indexOf(p) + 1}</Text>
+                  </View>
+                </Marker>
+              );
+            })}
+          </MapView>
+        ) : (
+          <View style={styles.mapaIndisponivel}>
+            <Ionicons name="map-outline" size={28} color={colors.textSecondary} />
+            <Text style={styles.mapaIndisponivelTexto}>Mapa indisponível neste build (sem chave do Google Maps).</Text>
+          </View>
+        )}
 
         <TouchableOpacity style={styles.backBtn} onPress={() => router.back()} accessibilityLabel="Voltar">
           <Ionicons name="arrow-back" size={20} color={colors.text} />
@@ -300,9 +322,9 @@ function RotaEmAndamento({ itinerario, paradasApi }) {
               <View style={styles.resumoItem}>
                 <Ionicons name="people-outline" size={18} color={colors.textSecondary} />
                 <Text style={styles.resumoValue}>
-                  {totalPresentes}/{totalAlunos}
+                  {contagem.aBordo}/{totalAlunos}
                 </Text>
-                <Text style={styles.resumoLabel}>Presentes</Text>
+                <Text style={styles.resumoLabel}>Na van</Text>
               </View>
             </View>
 
@@ -394,15 +416,14 @@ const styles = StyleSheet.create({
   legendaDot: { width: 10, height: 10, borderRadius: 5 },
   legendaText: { fontSize: 12, color: colors.textSecondary },
   parada: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
     backgroundColor: colors.white,
     borderRadius: 14,
     borderWidth: 1,
     borderColor: colors.borderLight,
     padding: 12,
+    gap: 10,
   },
+  paradaTopo: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   paradaEscola: { backgroundColor: '#F4FBF4' },
   separator: { height: 8 },
   ordem: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
@@ -413,10 +434,22 @@ const styles = StyleSheet.create({
   paradaNome: { fontSize: 14, fontWeight: '700', color: colors.text },
   paradaNomeEscola: { color: colors.success },
   paradaMeta: { marginTop: 2, fontSize: 12, color: colors.textMuted },
-  presenca: { alignItems: 'center' },
-  presencaLabel: { fontSize: 10, fontWeight: '700', marginBottom: 2 },
-  presente: { color: colors.success },
-  ausente: { color: colors.textMuted },
+  statusLinha: { flexDirection: 'row', gap: 6 },
+  statusBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    minHeight: 36,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.backgroundAlt,
+  },
+  statusTexto: { fontSize: 12, fontWeight: '700', color: colors.textMuted },
+  mapaIndisponivel: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32, gap: 8 },
+  mapaIndisponivelTexto: { color: colors.textSecondary, textAlign: 'center' },
   empty: { textAlign: 'center', color: colors.textMuted, marginTop: 24 },
   footer: {
     flexDirection: 'row',

@@ -7,7 +7,7 @@ import { apiCore } from './api';
  * @property {'IN_PROGRESS'|'FINISHED'|'CANCELLED'} status
  * @property {string} createdAt
  * @property {{ studentId: string, studentName: string, schoolName: string, classroom: string,
- *   presence: 'PRESENT'|'ABSENT', date: string }[]} presences
+ *   presence: 'PRESENT'|'ABSENT'|'DELIVERED', date: string }[]} presences
  */
 
 /**
@@ -29,7 +29,7 @@ export async function listarChamadas(routeId) {
 
 /**
  * PUT /attendances/{id}/presences
- * @param {Record<string, 'PRESENT'|'ABSENT'>} presencas studentId → status
+ * @param {Record<string, 'PRESENT'|'ABSENT'|'DELIVERED'>} presencas studentId → status
  */
 export function registrarPresencas(attendanceId, presencas) {
   return apiCore.put(`/attendances/${attendanceId}/presences`, presencas);
