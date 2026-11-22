@@ -1,0 +1,89 @@
+const googleMapsApiKey = process.env.GOOGLE_MAPS_API_KEY?.trim();
+const googleAndroidCertSha1 = process.env.GOOGLE_ANDROID_CERT_SHA1?.replace(/:/g, '').trim();
+const iaApiUrl = process.env.IA_API_URL?.trim().replace(/\/+$/, '');
+const apiHost = process.env.API_HOST?.trim()
+  .replace(/^https?:\/\//, '')
+  .replace(/[:/].*$/, '');
+
+module.exports = {
+  expo: {
+    name: 'SafeWay',
+    slug: 'safeway-fe-mobile',
+    owner: 'safewaysptech',
+    version: '1.0.0',
+    orientation: 'portrait',
+    icon: './assets/icon.png',
+    scheme: 'safeway',
+    userInterfaceStyle: 'light',
+    ios: {
+      supportsTablet: true,
+      bundleIdentifier: 'com.safeway.mobile',
+    },
+    android: {
+      package: 'com.safeway.mobile',
+      adaptiveIcon: {
+        foregroundImage: './assets/adaptive-icon.png',
+        backgroundColor: '#ffffff',
+      },
+      softwareKeyboardLayoutMode: 'pan',
+    },
+    web: {
+      favicon: './assets/favicon.png',
+    },
+    plugins: [
+      'expo-router',
+      'expo-font',
+      'expo-status-bar',
+      [
+        'expo-splash-screen',
+        {
+          image: './assets/splash-icon.png',
+          backgroundColor: '#ffffff',
+          resizeMode: 'contain',
+          imageWidth: 200,
+        },
+      ],
+      [
+        'expo-image-picker',
+        {
+          photosPermission: 'O SafeWay precisa acessar suas fotos para o perfil.',
+          cameraPermission: 'O SafeWay precisa da câmera para a foto de perfil.',
+        },
+      ],
+      [
+        'expo-location',
+        {
+          locationWhenInUsePermission:
+            'O SafeWay usa sua localização para mostrar a van no mapa durante a rota e, no assistente, para incluir onde você está nos avisos aos responsáveis e sugerir postos próximos.',
+        },
+      ],
+      [
+        'expo-speech-recognition',
+        {
+          microphonePermission:
+            'O SafeWay usa o microfone para você falar com o assistente durante a rota.',
+          speechRecognitionPermission:
+            'O SafeWay transforma sua fala em texto para o assistente entender o pedido.',
+        },
+      ],
+      ...(googleMapsApiKey
+        ? [['react-native-maps', { androidGoogleMapsApiKey: googleMapsApiKey }]]
+        : []),
+    ],
+    extra: {
+      googleMaps: {
+        ...(googleMapsApiKey ? { apiKey: googleMapsApiKey } : {}),
+        ...(googleAndroidCertSha1 ? { androidCertSha1: googleAndroidCertSha1 } : {}),
+      },
+      ia: {
+        ...(iaApiUrl ? { apiUrl: iaApiUrl } : {}),
+      },
+      api: {
+        ...(apiHost ? { host: apiHost } : {}),
+      },
+      eas: {
+        projectId: '2b22f798-bcaf-477f-8f48-c6b74a3a9f76',
+      },
+    },
+  },
+};

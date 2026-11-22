@@ -1,0 +1,177 @@
+import { useEffect, useState } from 'react';
+import { Alert, Image, ScrollView, View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { router } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
+import { Card } from '../../components/Card';
+import { colors } from '../../constants/colors';
+import { useCarregar } from '../../hooks/useCarregar';
+import { buscarUsuario, carregarFotoUsuario, descartarFotoTemporaria } from '../../services/usuario';
+
+const modules = [
+  {
+    key: 'alunos',
+    title: 'Alunos',
+    description: 'Cadastro e gestão de alunos',
+    icon: 'school-outline',
+    href: '/(app)/alunos',
+  },
+  {
+    key: 'itinerarios',
+    title: 'Itinerário',
+    description: 'Configure itinerários e horários',
+    icon: 'map-outline',
+    href: '/(app)/itinerarios',
+  },
+  {
+    key: 'assistente',
+    title: 'Assistente IA',
+    description: 'Comandos por voz para chamada e financeiro',
+    icon: 'mic-outline',
+    href: '/(app)/assistente',
+  },
+  {
+    key: 'financeiro',
+    title: 'Financeiro',
+    description: 'Controle financeiro e pagamentos',
+    icon: 'cash-outline',
+    href: '/(app)/financeiro',
+  },
+];
+
+export default function HomeScreen() {
+  const { dados: usuario } = useCarregar(buscarUsuario);
+  const [fotoUri, setFotoUri] = useState(null);
+  const primeiroNome = usuario?.name?.split(' ')[0];
+
+  useEffect(() => {
+    let ativo = true;
+    let arquivo = null;
+    setFotoUri(null);
+    if (usuario?.hasProfilePhoto) {
+      carregarFotoUsuario().then((foto) => {
+        if (!ativo) {
+          descartarFotoTemporaria(foto);
+          return;
+        }
+        arquivo = foto;
+        setFotoUri(foto.uri);
+      }).catch((erro) => {
+        if (ativo) Alert.alert('Não foi possível carregar a foto', erro.message);
+      });
+    }
+    return () => {
+      ativo = false;
+      descartarFotoTemporaria(arquivo);
+    };
+  }, [usuario]);
+
+  return (
+    <SafeAreaView style={styles.safe} edges={['top']}>
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        <View style={styles.header}>
+          <View style={styles.headerText}>
+            <Text style={styles.eyebrow}>SafeWay</Text>
+            <Text style={styles.greeting}>{primeiroNome ? `Olá, ${primeiroNome}` : 'Olá!'}</Text>
+            <Text style={styles.subtitle}>Sistema de Transporte Escolar</Text>
+          </View>
+          <TouchableOpacity
+            style={styles.avatarBtn}
+            onPress={() => router.push('/(app)/perfil')}
+            accessibilityLabel="Abrir perfil"
+          >
+            <View style={styles.avatar}>
+              {fotoUri ? (
+                <Image
+                  source={{ uri: fotoUri }}
+                  style={styles.avatarImg}
+                  onError={(evento) => {
+                    console.warn('[home] Falha ao carregar foto:', evento.nativeEvent.error);
+                    setFotoUri(null);
+                    Alert.alert('Não foi possível carregar a foto', 'Abra o perfil para tentar novamente.');
+                  }}
+                />
+              ) : (
+                <Ionicons name="person" size={22} color={colors.white} />
+              )}
+            </View>
+          </TouchableOpacity>
+        </View>
+
+        <Text style={styles.section}>Módulos do Sistema</Text>
+
+        <View style={styles.grid}>
+          {modules.map((item) => (
+            <TouchableOpacity
+              key={item.key}
+              activeOpacity={0.85}
+              onPress={() => router.push(item.href)}
+            >
+              <Card style={styles.card}>
+                <View style={styles.iconBox}>
+                  <Ionicons name={item.icon} size={24} color={colors.primary} />
+                </View>
+                <View style={styles.cardText}>
+                  <Text style={styles.cardTitle}>{item.title}</Text>
+                  <Text style={styles.cardDesc}>{item.description}</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+              </Card>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
+
+const styles = StyleSheet.create({
+  safe: { flex: 1, backgroundColor: colors.background },
+  content: { paddingHorizontal: 20, paddingTop: 12, paddingBottom: 24 },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 24,
+    gap: 12,
+  },
+  headerText: { flex: 1 },
+  eyebrow: { fontSize: 13, color: colors.primary, fontWeight: '700', marginBottom: 4 },
+  greeting: { fontSize: 24, fontWeight: '700', color: colors.text, marginBottom: 4 },
+  subtitle: { fontSize: 14, color: colors.textSecondary },
+  avatarBtn: { padding: 2 },
+  avatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  avatarImg: { width: '100%', height: '100%' },
+  section: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.text,
+    marginBottom: 12,
+  },
+  grid: { gap: 12 },
+  card: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    marginBottom: 0,
+  },
+  iconBox: {
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    backgroundColor: colors.primarySoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cardText: { flex: 1 },
+  cardTitle: { fontSize: 16, fontWeight: '700', color: colors.text, marginBottom: 2 },
+  cardDesc: { fontSize: 13, color: colors.textMuted },
+});
