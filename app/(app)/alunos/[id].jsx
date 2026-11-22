@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet, Alert } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
 import { Button } from '../../../components/Button';
 import { Card } from '../../../components/Card';
@@ -43,7 +43,7 @@ export default function AlunoDetalheScreen() {
       <Button
         title="Editar Cadastro"
         variant="outline"
-        onPress={() => Alert.alert('Em breve', 'A edição do aluno ainda não está disponível no app.')}
+        onPress={() => router.push(`/(app)/alunos/editar/${aluno.id}`)}
         style={styles.editBtn}
       />
 
@@ -76,6 +76,12 @@ export default function AlunoDetalheScreen() {
             label="Telefone"
             value={responsavel.primaryPhoneNumber ? formatPhone(responsavel.primaryPhoneNumber) : null}
           />
+          {responsavel.secondaryPhoneNumber ? (
+            <InfoItem
+              label="Telefone secundário"
+              value={formatPhone(responsavel.secondaryPhoneNumber)}
+            />
+          ) : null}
           <InfoItem label="E-mail" value={responsavel.email} />
           <InfoItem label="Endereço" value={formatEndereco(responsavel.address)} />
         </Card>
