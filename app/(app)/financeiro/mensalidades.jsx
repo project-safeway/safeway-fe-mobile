@@ -1,9 +1,20 @@
 import { useCallback, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, KeyboardAvoidingView, Platform } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { useFocusEffect } from 'expo-router';
+import {
+  View,
+  Text,
+  StyleSheet,
+  FlatList,
+  TouchableOpacity,
+  KeyboardAvoidingView,
+  Platform,
+  Modal,
+  Pressable,
+} from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { BackHeader } from '../../../components/BackHeader';
+import { Button } from '../../../components/Button';
 import { Card } from '../../../components/Card';
 import { EstadoCarregamento } from '../../../components/EstadoCarregamento';
 import { Input } from '../../../components/Input';
@@ -17,8 +28,9 @@ import {
 import { colors } from '../../../constants/colors';
 import { useFinanceiro } from '../../../contexts/FinanceiroContext';
 import { useKeyboardBottomInset } from '../../../hooks/useKeyboardBottomInset';
-import { brToISO, formatCurrency, isoToBR, maskDate } from '../../../utils/formatters';
+import { brToISO, formatCurrency, isoToBR, maskDate, maskMoney } from '../../../utils/formatters';
 import { STATUS_MENSALIDADE, dentroDoPeriodo, periodoAtalho } from '../../../utils/financeiro';
+import { validarDesconto } from '../../../utils/mensalidadeForm';
 
 const ATALHOS = [
   { key: 'mes', label: 'Mês Atual' },
@@ -35,15 +47,69 @@ function filtrosDoAtalho(atalho) {
 const filtrosIniciais = () => ({ texto: '', status: [], ...filtrosDoAtalho('mes') });
 
 export default function MensalidadesScreen() {
-  const { mensalidades, carregado, erro, recarregar, pagarMensalidade, cancelarMensalidade, nomeResponsavel } =
-    useFinanceiro();
+  const {
+    mensalidades,
+    carregado,
+    erro,
+    recarregar,
+    pagarMensalidade,
+    cancelarMensalidade,
+    aplicarDesconto,
+    nomeResponsavel,
+  } = useFinanceiro();
   useFocusEffect(
     useCallback(() => {
       recarregar();
     }, [recarregar])
   );
+  const insets = useSafeAreaInsets();
   const keyboardInset = useKeyboardBottomInset();
   const [filtros, setFiltros] = useState(filtrosIniciais);
+  const [descontoAlvo, setDescontoAlvo] = useState(null);
+  const [valorDescontoTexto, setValorDescontoTexto] = useState('');
+  const [erroDesconto, setErroDesconto] = useState(null);
+  const [salvandoDesconto, setSalvandoDesconto] = useState(false);
+
+  const abrirModalDesconto = (mensalidade) => {
+    setDescontoAlvo(mensalidade);
+    setValorDescontoTexto('');
+    setErroDesconto(null);
+  };
+
+  const fecharModalDesconto = () => {
+    if (salvandoDesconto) return;
+    setDescontoAlvo(null);
+    setValorDescontoTexto('');
+    setErroDesconto(null);
+  };
+
+  const confirmarDesconto = async () => {
+    if (!descontoAlvo) return;
+    const { valorDesconto, erro: validacao } = validarDesconto(
+      valorDescontoTexto,
+      descontoAlvo.valorMensalidade
+    );
+    if (validacao) {
+      setErroDesconto(validacao);
+      return;
+    }
+    setErroDesconto(null);
+    setSalvandoDesconto(true);
+    const ok = await aplicarDesconto(descontoAlvo.id, valorDesconto);
+    setSalvandoDesconto(false);
+    if (ok) {
+      setDescontoAlvo(null);
+      setValorDescontoTexto('');
+    }
+  };
+
+  const previewDesconto = descontoAlvo
+    ? validarDesconto(valorDescontoTexto, descontoAlvo.valorMensalidade)
+    : null;
+  const novoValorPreview =
+    descontoAlvo && previewDesconto && !previewDesconto.erro
+      ? Number(descontoAlvo.valorMensalidade) - previewDesconto.valorDesconto
+      : null;
 
   const setFiltro = (campo, valor) => setFiltros((prev) => ({ ...prev, [campo]: valor }));
   const setData = (campo, valor) => setFiltros((prev) => ({ ...prev, [campo]: maskDate(valor), atalho: '' }));
@@ -76,7 +142,19 @@ export default function MensalidadesScreen() {
 
   const header = (
     <>
-      <BackHeader title="Mensalidades" subtitle="Receitas por aluno" />
+      <BackHeader
+        title="Mensalidades"
+        subtitle="Receitas por aluno"
+        right={
+          <TouchableOpacity
+            style={styles.novaBtn}
+            onPress={() => router.push('/(app)/financeiro/mensalidade')}
+          >
+            <Ionicons name="add" size={18} color={colors.white} />
+            <Text style={styles.novaText}>Nova</Text>
+          </TouchableOpacity>
+        }
+      />
 
       <View style={styles.resumo}>
         <Card style={styles.resumoCard}>
@@ -192,6 +270,14 @@ export default function MensalidadesScreen() {
                   {emAberto ? (
                     <View style={styles.acoes}>
                       <TouchableOpacity
+                        style={styles.descontoBtn}
+                        onPress={() => abrirModalDesconto(item)}
+                        accessibilityLabel={`Aplicar desconto para ${item.nomeAluno}`}
+                      >
+                        <Ionicons name="pricetag-outline" size={15} color={colors.primaryDark} />
+                        <Text style={styles.descontoText}>Desconto</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
                         style={styles.cancelarBtn}
                         onPress={() => confirmarCancelamentoMensalidade(item, cancelarMensalidade)}
                       >
@@ -203,7 +289,7 @@ export default function MensalidadesScreen() {
                         onPress={() => confirmarPagamentoMensalidade(item, pagarMensalidade)}
                       >
                         <Ionicons name="checkmark-circle" size={16} color={colors.white} />
-                        <Text style={styles.pagarText}>Marcar Pago</Text>
+                        <Text style={styles.pagarText}>Pagar</Text>
                       </TouchableOpacity>
                     </View>
                   ) : null}
@@ -213,6 +299,63 @@ export default function MensalidadesScreen() {
           }}
         />
       </KeyboardAvoidingView>
+
+      <Modal
+        visible={Boolean(descontoAlvo)}
+        transparent
+        animationType="fade"
+        onRequestClose={fecharModalDesconto}
+      >
+        <Pressable style={styles.overlay} onPress={fecharModalDesconto}>
+          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+            <Pressable
+              style={[styles.sheet, { paddingBottom: 20 + insets.bottom }]}
+              onPress={(e) => e.stopPropagation()}
+            >
+              <Text style={styles.sheetTitle}>Aplicar Desconto</Text>
+              {descontoAlvo ? (
+                <Text style={styles.sheetSubtitle}>
+                  {descontoAlvo.nomeAluno} • Valor atual: {formatCurrency(descontoAlvo.valorMensalidade)}
+                </Text>
+              ) : null}
+
+              <Input
+                label="Valor do desconto (R$) *"
+                placeholder="0,00"
+                value={valorDescontoTexto}
+                onChangeText={(v) => {
+                  setValorDescontoTexto(maskMoney(v));
+                  if (erroDesconto) setErroDesconto(null);
+                }}
+                keyboardType="number-pad"
+                error={erroDesconto}
+              />
+
+              {novoValorPreview !== null ? (
+                <Text style={styles.preview}>
+                  Novo valor: <Text style={styles.previewBold}>{formatCurrency(novoValorPreview)}</Text>
+                </Text>
+              ) : null}
+
+              <View style={styles.sheetActions}>
+                <Button
+                  title="Voltar"
+                  variant="outline"
+                  onPress={fecharModalDesconto}
+                  disabled={salvandoDesconto}
+                  style={styles.sheetBtn}
+                />
+                <Button
+                  title="Aplicar"
+                  onPress={confirmarDesconto}
+                  loading={salvandoDesconto}
+                  style={styles.sheetBtn}
+                />
+              </View>
+            </Pressable>
+          </KeyboardAvoidingView>
+        </Pressable>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -221,6 +364,16 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
   flex: { flex: 1 },
   content: { paddingHorizontal: 20, paddingTop: 8 },
+  novaBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: colors.primary,
+    borderRadius: 20,
+    paddingHorizontal: 14,
+    height: 40,
+  },
+  novaText: { color: colors.white, fontSize: 13, fontWeight: '700' },
   resumo: { flexDirection: 'row', gap: 8 },
   resumoCard: { flex: 1, paddingVertical: 12 },
   resumoLabel: { fontSize: 11, color: colors.textSecondary, marginBottom: 4 },
@@ -233,9 +386,21 @@ const styles = StyleSheet.create({
   cardTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
   nome: { flex: 1, fontSize: 15, fontWeight: '700', color: colors.text },
   meta: { marginTop: 3, fontSize: 12, color: colors.textMuted },
-  cardBottom: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 10 },
+  cardBottom: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, marginTop: 10 },
   valor: { fontSize: 16, fontWeight: '700', color: colors.text },
-  acoes: { flexDirection: 'row', gap: 8 },
+  acoes: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  descontoBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    borderWidth: 1,
+    borderColor: colors.primaryBorder,
+    backgroundColor: colors.primarySoft,
+    borderRadius: 10,
+    paddingHorizontal: 9,
+    paddingVertical: 7,
+  },
+  descontoText: { color: colors.primaryDark, fontSize: 12, fontWeight: '700' },
   cancelarBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -244,20 +409,33 @@ const styles = StyleSheet.create({
     borderColor: colors.errorBg,
     backgroundColor: colors.white,
     borderRadius: 10,
-    paddingHorizontal: 10,
+    paddingHorizontal: 9,
     paddingVertical: 7,
   },
-  cancelarText: { color: colors.error, fontSize: 13, fontWeight: '700' },
+  cancelarText: { color: colors.error, fontSize: 12, fontWeight: '700' },
   pagarBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
     backgroundColor: colors.success,
     borderRadius: 10,
-    paddingHorizontal: 12,
+    paddingHorizontal: 10,
     paddingVertical: 8,
   },
-  pagarText: { color: colors.white, fontSize: 13, fontWeight: '700' },
+  pagarText: { color: colors.white, fontSize: 12, fontWeight: '700' },
+  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
+  sheet: {
+    backgroundColor: colors.white,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 20,
+  },
+  sheetTitle: { fontSize: 18, fontWeight: '700', color: colors.text },
+  sheetSubtitle: { marginTop: 4, marginBottom: 14, fontSize: 13, color: colors.textSecondary },
+  preview: { marginTop: -4, marginBottom: 14, fontSize: 13, color: colors.textSecondary },
+  previewBold: { color: colors.success, fontWeight: '700' },
+  sheetActions: { flexDirection: 'row', gap: 10 },
+  sheetBtn: { flex: 1, borderRadius: 14 },
   emptyCard: { alignItems: 'center', paddingVertical: 28, gap: 6 },
   emptyTitle: { fontWeight: '700', color: colors.text },
   emptyText: { textAlign: 'center', color: colors.textMuted, fontSize: 13 },

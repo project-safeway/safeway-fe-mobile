@@ -69,6 +69,26 @@ export function FinanceiroProvider({ children }) {
     []
   );
 
+  /** PATCH /api/v1/mensalidades/desconto/{id}?valorDesconto= */
+  const aplicarDesconto = useCallback(
+    (id, valorDesconto) =>
+      tentar(async () => {
+        const atualizada = await apiFinanceiro.aplicarDescontoMensalidade(id, valorDesconto);
+        setMensalidades((prev) => prev.map((m) => (m.id === id ? atualizada : m)));
+      }),
+    []
+  );
+
+  /** POST /api/v1/mensalidades/criar */
+  const criarMensalidade = useCallback(
+    (body) =>
+      tentar(async () => {
+        const criada = await apiFinanceiro.criarMensalidade(body);
+        setMensalidades((prev) => [...prev, criada]);
+      }),
+    []
+  );
+
   /** POST /api/v1/pagamentos/registrar — body: { dataPagamento, valorPagamento, descricao } */
   const criarPagamento = useCallback(
     (body) =>
@@ -110,6 +130,8 @@ export function FinanceiroProvider({ children }) {
       recarregar,
       pagarMensalidade,
       cancelarMensalidade,
+      aplicarDesconto,
+      criarMensalidade,
       criarPagamento,
       atualizarPagamento,
       excluirPagamento,
@@ -123,6 +145,8 @@ export function FinanceiroProvider({ children }) {
       recarregar,
       pagarMensalidade,
       cancelarMensalidade,
+      aplicarDesconto,
+      criarMensalidade,
       criarPagamento,
       atualizarPagamento,
       excluirPagamento,

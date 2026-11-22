@@ -15,6 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Input } from '../components/Input';
 import { Button } from '../components/Button';
 import { Checkbox } from '../components/Checkbox';
+import { DocumentoLegalModal } from '../components/DocumentoLegalModal';
 import { colors } from '../constants/colors';
 import { validateRegisterForm, validatePassword, isValidPhone, validatePlaca } from '../utils/validators';
 import { maskPhone, maskPlaca } from '../utils/formatters';
@@ -37,6 +38,7 @@ export default function RegisterScreen() {
   });
   const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);
+  const [documentoLegal, setDocumentoLegal] = useState(null);
 
   const registerFieldY = (key) => (event) => {
     fieldY.current[key] = event.nativeEvent.layout.y;
@@ -256,8 +258,22 @@ export default function RegisterScreen() {
             />
             <Text style={styles.termsText}>
               Concordo com os{' '}
-              <Text style={styles.termsLink}>Termos de Uso</Text> e a{' '}
-              <Text style={styles.termsLink}>Política de Privacidade</Text> do app.
+              <Text
+                style={styles.termsLink}
+                accessibilityRole="link"
+                onPress={() => setDocumentoLegal('termos')}
+              >
+                Termos de Uso
+              </Text>{' '}
+              e a{' '}
+              <Text
+                style={styles.termsLink}
+                accessibilityRole="link"
+                onPress={() => setDocumentoLegal('privacidade')}
+              >
+                Política de Privacidade
+              </Text>{' '}
+              do app.
             </Text>
           </View>
           {errors.aceiteTermos ? (
@@ -281,6 +297,8 @@ export default function RegisterScreen() {
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      <DocumentoLegalModal documento={documentoLegal} onClose={() => setDocumentoLegal(null)} />
     </SafeAreaView>
   );
 }
