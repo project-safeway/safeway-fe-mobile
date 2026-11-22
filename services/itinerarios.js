@@ -35,6 +35,16 @@ export function atualizarItinerario(id, body) {
   return apiCore.put(`/routes/${id}`, body);
 }
 
+/**
+ * POST /routes/optimize — calcula a ordem otimizada de paradas via Google Route Optimization.
+ * @param {{ vehicle: { id: string, intialLocation: { lat: number, lng: number }, finalLocation: { lat: number, lng: number } },
+ *   stoppingPoint: { id: string, location: { lat: number, lng: number }, order?: number }[],
+ *   mustOptimizeOrder: boolean }} body
+ */
+export function otimizarRota(body) {
+  return apiCore.post('/routes/optimize', body);
+}
+
 /** DELETE /routes/{id} (inativa o itinerário) */
 export function excluirItinerario(id) {
   return apiCore.delete(`/routes/${id}`);

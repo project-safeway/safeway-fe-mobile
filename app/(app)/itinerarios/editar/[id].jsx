@@ -1,5 +1,15 @@
 import { useCallback, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert, Modal, FlatList, Pressable } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  Alert,
+  Modal,
+  FlatList,
+  Pressable,
+  ActivityIndicator,
+} from 'react-native';
 import { useAnimatedRef } from 'react-native-reanimated';
 import Sortable from 'react-native-sortables';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -14,13 +24,23 @@ import { KeyboardScreen } from '../../../../components/KeyboardScreen';
 import { EstadoCarregamento } from '../../../../components/EstadoCarregamento';
 import { colors } from '../../../../constants/colors';
 import { useCarregar } from '../../../../hooks/useCarregar';
-import { atualizarItinerario, buscarItinerario, buscarParadas } from '../../../../services/itinerarios';
+import {
+  atualizarItinerario,
+  buscarItinerario,
+  buscarParadas,
+  otimizarRota,
+} from '../../../../services/itinerarios';
 import { listarAlunos } from '../../../../services/alunos';
 import { listarEscolas } from '../../../../services/escolas';
+import { obterLocalizacaoRapida } from '../../../../services/localizacao';
 import { isRequired } from '../../../../utils/validators';
 import { horaCurta } from '../../../../utils/formatters';
 import { HORARIO_OPTIONS, TIPO_VIAGEM_OPTIONS } from '../../../../utils/constants';
 import { buildTrajeto, reindexTrajeto, toStops } from '../../../../utils/trajeto';
+import {
+  aplicarOrdemOtimizada,
+  montarRequisicaoOtimizacao,
+} from '../../../../utils/otimizacaoRota';
 
 export default function EditarItinerarioScreen() {
   const { id } = useLocalSearchParams();
@@ -58,6 +78,8 @@ function FormularioItinerario({ itinerario, paradas, alunos, escolas }) {
   const [horarioFim, setHorarioFim] = useState(horaCurta(itinerario.endTime));
   const [tipoViagem, setTipoViagem] = useState(itinerario.routeType);
   const [trajeto, setTrajeto] = useState(() => buildTrajeto(paradas));
+  const [resumoOtimizacao, setResumoOtimizacao] = useState(null);
+  const [otimizando, setOtimizando] = useState(false);
   const [addModal, setAddModal] = useState(null);
   const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);
@@ -76,12 +98,13 @@ function FormularioItinerario({ itinerario, paradas, alunos, escolas }) {
           escola: a.school?.name,
           sala: a.classroom,
           responsavel: a.guardians?.[0]?.name,
+          address: a.guardians?.[0]?.address,
         }));
     }
     if (addModal === 'escola') {
       return escolas
         .filter((e) => !noTrajeto.has(`escola-${e.id}`))
-        .map((e) => ({ id: e.id, nome: e.name, cidade: e.address?.city }));
+        .map((e) => ({ id: e.id, nome: e.name, cidade: e.address?.city, address: e.address }));
     }
     return [];
   }, [addModal, trajeto, alunos, escolas]);
@@ -90,6 +113,7 @@ function FormularioItinerario({ itinerario, paradas, alunos, escolas }) {
     setTrajeto((prev) =>
       reindexTrajeto([...prev, { ...option, key: `${addModal}-${option.id}`, tipo: addModal }])
     );
+    setResumoOtimizacao(null);
     setAddModal(null);
   };
 
@@ -103,11 +127,41 @@ function FormularioItinerario({ itinerario, paradas, alunos, escolas }) {
         {
           text: 'Remover',
           style: 'destructive',
-          onPress: () => setTrajeto((prev) => reindexTrajeto(prev.filter((t) => t.key !== item.key))),
+          onPress: () => {
+            setTrajeto((prev) => reindexTrajeto(prev.filter((t) => t.key !== item.key)));
+            setResumoOtimizacao(null);
+          },
         },
       ]
     );
   }, []);
+
+  const otimizar = async () => {
+    setOtimizando(true);
+    try {
+      const localizacaoAtual = await obterLocalizacaoRapida();
+      const { payload, erro } = montarRequisicaoOtimizacao(trajeto, {
+        tipoViagem,
+        veiculoId: itinerario.id,
+        localizacaoAtual,
+      });
+      if (erro) {
+        Alert.alert('Não foi possível otimizar', erro);
+        return;
+      }
+      const resposta = await otimizarRota(payload);
+      const { trajetoOtimizado, distanciaMetros, duracaoSegundos } = aplicarOrdemOtimizada(
+        trajeto,
+        resposta
+      );
+      setTrajeto(trajetoOtimizado);
+      setResumoOtimizacao({ distanciaMetros, duracaoSegundos });
+    } catch (e) {
+      Alert.alert('Não foi possível otimizar a rota', e.message);
+    } finally {
+      setOtimizando(false);
+    }
+  };
 
   const salvar = async () => {
     const next = {};
@@ -256,6 +310,39 @@ function FormularioItinerario({ itinerario, paradas, alunos, escolas }) {
             </TouchableOpacity>
           </View>
 
+          {trajeto.length >= 2 ? (
+            <TouchableOpacity
+              style={[styles.optimizeBtn, otimizando && styles.optimizeBtnDisabled]}
+              onPress={otimizar}
+              disabled={otimizando || loading}
+            >
+              {otimizando ? (
+                <ActivityIndicator size="small" color={colors.primaryDark} />
+              ) : (
+                <Ionicons name="sparkles-outline" size={16} color={colors.primaryDark} />
+              )}
+              <Text style={styles.optimizeBtnText}>
+                {otimizando ? 'Otimizando rota…' : 'Otimizar ordem da rota'}
+              </Text>
+            </TouchableOpacity>
+          ) : null}
+
+          {resumoOtimizacao ? (
+            <View style={styles.optimizeInfo}>
+              <Ionicons name="checkmark-circle" size={16} color={colors.success} />
+              <Text style={styles.optimizeInfoText}>
+                Ordem otimizada
+                {resumoOtimizacao.distanciaMetros !== null
+                  ? ` · ${(resumoOtimizacao.distanciaMetros / 1000).toFixed(2)} km`
+                  : ''}
+                {resumoOtimizacao.duracaoSegundos !== null
+                  ? ` · ${Math.round(resumoOtimizacao.duracaoSegundos / 60)} min`
+                  : ''}
+                . Revise e toque em Salvar Alterações.
+              </Text>
+            </View>
+          ) : null}
+
           {trajeto.length === 0 ? (
             <View style={styles.empty}>
               <Ionicons name="git-branch-outline" size={40} color={colors.border} />
@@ -273,7 +360,10 @@ function FormularioItinerario({ itinerario, paradas, alunos, escolas }) {
                 rowGap={8}
                 customHandle
                 scrollableRef={scrollRef}
-                onDragEnd={({ data }) => setTrajeto(reindexTrajeto(data))}
+                onDragEnd={({ data }) => {
+                  setTrajeto(reindexTrajeto(data));
+                  setResumoOtimizacao(null);
+                }}
               />
             </>
           )}
@@ -351,6 +441,34 @@ const styles = StyleSheet.create({
   },
   addBtnEscola: { backgroundColor: colors.success },
   addBtnText: { color: colors.white, fontWeight: '700', fontSize: 12 },
+  optimizeBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    minHeight: 42,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.primaryBorder,
+    backgroundColor: colors.primarySoft,
+    marginBottom: 12,
+    paddingHorizontal: 12,
+  },
+  optimizeBtnDisabled: { opacity: 0.6 },
+  optimizeBtnText: { color: colors.primaryDark, fontWeight: '700', fontSize: 13 },
+  optimizeInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: colors.successSoft,
+    borderWidth: 1,
+    borderColor: colors.successBg,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 12,
+  },
+  optimizeInfoText: { flex: 1, fontSize: 12, lineHeight: 17, color: colors.text },
   dragHint: { fontSize: 12, color: colors.textMuted, marginBottom: 10 },
   empty: { alignItems: 'center', paddingVertical: 20, gap: 6 },
   emptyTitle: { fontWeight: '700', color: colors.text },
