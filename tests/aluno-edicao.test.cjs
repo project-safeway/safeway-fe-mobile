@@ -256,3 +256,62 @@ test('atualizarAlunoCompleto cria e vincula responsavel novo quando aluno nao ti
   assert.equal(chamadas[2].method, 'PUT');
   assert.equal(chamadas[2].url, 'http://localhost:8080/students/student-1');
 });
+
+test('filtra responsaveis disponiveis para vincular excluindo os ja vinculados e ordenando por nome', async () => {
+  const { responsaveisDisponiveisParaVincular } = await carregarUtils();
+
+  const todos = [
+    { id: 'g-3', name: 'Zilda' },
+    { id: 'g-1', name: 'Ana' },
+    { id: 'g-2', name: 'Carlos' },
+  ];
+  const disponiveis = responsaveisDisponiveisParaVincular(todos, [{ id: 'g-1', name: 'Ana' }]);
+
+  assert.deepEqual(
+    Array.from(disponiveis, (g) => g.id),
+    ['g-2', 'g-3']
+  );
+});
+
+test('servicos de listar, criar+vincular e desvincular responsaveis chamam os endpoints corretos', async () => {
+  const { alunos, chamadas } = await carregarServico([
+    { status: 200, body: [{ id: 'g-1', name: 'Maria' }] },
+    { status: 201, body: { id: 'g-2', name: 'João' } },
+    { status: 204, body: '' },
+    { status: 204, body: '' },
+  ]);
+
+  const lista = await alunos.listarResponsaveis();
+  assert.equal(lista.length, 1);
+
+  const criado = await alunos.criarEVincularResponsavel('student-1', { name: 'João' });
+  assert.equal(criado.id, 'g-2');
+
+  await alunos.desvincularResponsavel('student-1', 'g-2');
+
+  assert.equal(chamadas[0].method, 'GET');
+  assert.equal(chamadas[0].url, 'http://localhost:8080/guardians');
+  assert.equal(chamadas[1].method, 'POST');
+  assert.equal(chamadas[1].url, 'http://localhost:8080/guardians');
+  assert.equal(chamadas[2].method, 'PUT');
+  assert.equal(chamadas[2].url, 'http://localhost:8080/students/student-1/guardians/g-2');
+  assert.equal(chamadas[3].method, 'DELETE');
+  assert.equal(chamadas[3].url, 'http://localhost:8080/students/student-1/guardians/g-2');
+});
+
+test('identifica responsavel principal e monta somente alteracoes necessarias ao trocar principal', async () => {
+  const { responsavelPrincipal, montarPayloadsDefinirPrincipal } = await carregarUtils();
+
+  const g1 = { ...ALUNO_API.guardians[0], id: 'g-1', address: { ...ALUNO_API.guardians[0].address, principal: true } };
+  const g2 = { ...ALUNO_API.guardians[0], id: 'g-2', name: 'Pai', address: { ...ALUNO_API.guardians[0].address, principal: false } };
+
+  assert.equal(responsavelPrincipal([g2, g1]).id, 'g-1');
+  assert.equal(responsavelPrincipal([{ ...g2, address: { ...g2.address, principal: false } }]).id, 'g-2');
+
+  const alteracoes = JSON.parse(JSON.stringify(montarPayloadsDefinirPrincipal([g1, g2], 'g-2')));
+  assert.equal(alteracoes.length, 2);
+  assert.equal(alteracoes[0].id, 'g-1');
+  assert.equal(alteracoes[0].payload.address.principal, false);
+  assert.equal(alteracoes[1].id, 'g-2');
+  assert.equal(alteracoes[1].payload.address.principal, true);
+});

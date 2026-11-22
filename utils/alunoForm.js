@@ -78,6 +78,70 @@ export function criarEstadoInicialAluno(aluno) {
 }
 
 /**
+ * Valida um único responsável (dados de contato + endereço).
+ * @param {ReturnType<typeof criarResponsavelVazio>} resp
+ * @returns {Record<string, string>}
+ */
+export function validarResponsavel(resp) {
+  const errors = {};
+  const end = resp?.endereco || {};
+  if (!isRequired(resp?.nome)) errors.nome = 'Obrigatório';
+  else if (resp.nome.trim().length > 45) errors.nome = 'Máximo de 45 caracteres';
+  if (!isValidPhone(resp?.tel1)) errors.tel1 = 'Telefone inválido';
+  if (resp?.tel2 && !isValidPhone(resp.tel2)) errors.tel2 = 'Telefone inválido';
+  if (resp?.email && !isValidEmail(resp.email)) errors.email = 'E-mail inválido';
+  if (String(end.cep || '').replace(/\D/g, '').length !== 8) errors.cep = 'CEP inválido';
+  if (!isRequired(end.logradouro)) errors.logradouro = 'Obrigatório';
+  if (!isRequired(end.numero)) errors.numero = 'Obrigatório';
+  if (!isRequired(end.bairro)) errors.bairro = 'Obrigatório';
+  if (!isRequired(end.cidade)) errors.cidade = 'Obrigatório';
+  if (String(end.uf || '').trim().length !== 2) errors.uf = 'Obrigatório';
+  return errors;
+}
+
+/**
+ * Retorna o responsável principal do aluno (com `address.principal === true`), ou o primeiro da lista.
+ * Espelha a ordenação de fallback do RouteStudentService.resolveStudentAddress na core-api.
+ * @param {object[]} guardians GuardianResponse[]
+ */
+export function responsavelPrincipal(guardians = []) {
+  if (!guardians?.length) return null;
+  return guardians.find((g) => g?.address?.principal === true) ?? guardians[0];
+}
+
+/**
+ * Monta os payloads mínimos de PUT /guardians/{id} para definir um responsável como principal
+ * e desmarcar qualquer outro responsável do aluno que estivesse marcado como principal.
+ * @param {object[]} guardians GuardianResponse[]
+ * @param {string} guardianIdEscolhido
+ * @returns {{ id: string, payload: object }[]}
+ */
+export function montarPayloadsDefinirPrincipal(guardians = [], guardianIdEscolhido) {
+  return (guardians || [])
+    .filter((g) => g?.id && g?.address)
+    .flatMap((g) => {
+      const deveSerPrincipal = g.id === guardianIdEscolhido;
+      const jaEhPrincipal = Boolean(g.address.principal);
+      if (deveSerPrincipal === jaEhPrincipal) return [];
+      const estado = criarEstadoResponsavel(g);
+      estado.endereco.principal = deveSerPrincipal;
+      return [{ id: g.id, payload: montarPayloadResponsavel(estado) }];
+    });
+}
+
+/**
+ * Filtra os responsáveis cadastrados que ainda não estão vinculados ao aluno, ordenados por nome.
+ * @param {object[]} todosResponsaveis GuardianResponse[]
+ * @param {object[]} vinculados GuardianResponse[]
+ */
+export function responsaveisDisponiveisParaVincular(todosResponsaveis = [], vinculados = []) {
+  const idsVinculados = new Set((vinculados || []).map((g) => g.id));
+  return (todosResponsaveis || [])
+    .filter((g) => g?.id && !idsVinculados.has(g.id))
+    .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+}
+
+/**
  * Valida o formulário de aluno (dados do estudante e de cada responsável).
  * @param {ReturnType<typeof criarEstadoInicialAluno>} estado
  * @param {string} [hoje] data atual em "YYYY-MM-DD"
@@ -102,18 +166,10 @@ export function validarFormularioAluno(estado, hoje = hojeLocalISO()) {
 
   (estado.responsaveis || []).forEach((resp, index) => {
     const prefix = `resp_${index}_`;
-    const end = resp.endereco || {};
-    if (!isRequired(resp.nome)) errors[`${prefix}nome`] = 'Obrigatório';
-    else if (resp.nome.trim().length > 45) errors[`${prefix}nome`] = 'Máximo de 45 caracteres';
-    if (!isValidPhone(resp.tel1)) errors[`${prefix}tel1`] = 'Telefone inválido';
-    if (resp.tel2 && !isValidPhone(resp.tel2)) errors[`${prefix}tel2`] = 'Telefone inválido';
-    if (resp.email && !isValidEmail(resp.email)) errors[`${prefix}email`] = 'E-mail inválido';
-    if (String(end.cep || '').replace(/\D/g, '').length !== 8) errors[`${prefix}cep`] = 'CEP inválido';
-    if (!isRequired(end.logradouro)) errors[`${prefix}logradouro`] = 'Obrigatório';
-    if (!isRequired(end.numero)) errors[`${prefix}numero`] = 'Obrigatório';
-    if (!isRequired(end.bairro)) errors[`${prefix}bairro`] = 'Obrigatório';
-    if (!isRequired(end.cidade)) errors[`${prefix}cidade`] = 'Obrigatório';
-    if (String(end.uf || '').trim().length !== 2) errors[`${prefix}uf`] = 'Obrigatório';
+    const errosResp = validarResponsavel(resp);
+    Object.entries(errosResp).forEach(([campo, mensagem]) => {
+      errors[`${prefix}${campo}`] = mensagem;
+    });
   });
 
   return errors;

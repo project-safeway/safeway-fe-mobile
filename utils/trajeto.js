@@ -24,7 +24,7 @@ export function reindexTrajeto(list) {
   return list.map((item, index) => ({ ...item, ordemGlobal: index + 1 }));
 }
 
-/** Monta `stops` no formato do PUT /routes/{id}. */
+/** Monta `stops` no formato do PUT /routes/{id}, incluindo `addressId` opcional para paradas de aluno. */
 export function toStops(list) {
   let ordemAluno = 1;
   let ordemEscola = 1;
@@ -33,5 +33,6 @@ export function toStops(list) {
     id: item.id,
     generalOrder: index + 1,
     specificOrder: item.tipo === 'aluno' ? ordemAluno++ : ordemEscola++,
+    ...(item.tipo === 'aluno' && item.address?.id ? { addressId: item.address.id } : {}),
   }));
 }

@@ -34,8 +34,9 @@ import { listarAlunos } from '../../../../services/alunos';
 import { listarEscolas } from '../../../../services/escolas';
 import { obterLocalizacaoRapida } from '../../../../services/localizacao';
 import { isRequired } from '../../../../utils/validators';
-import { horaCurta } from '../../../../utils/formatters';
+import { formatEndereco, horaCurta } from '../../../../utils/formatters';
 import { HORARIO_OPTIONS, TIPO_VIAGEM_OPTIONS } from '../../../../utils/constants';
+import { responsavelPrincipal } from '../../../../utils/alunoForm';
 import { buildTrajeto, reindexTrajeto, toStops } from '../../../../utils/trajeto';
 import {
   aplicarOrdemOtimizada,
@@ -81,8 +82,14 @@ function FormularioItinerario({ itinerario, paradas, alunos, escolas }) {
   const [resumoOtimizacao, setResumoOtimizacao] = useState(null);
   const [otimizando, setOtimizando] = useState(false);
   const [addModal, setAddModal] = useState(null);
+  const [enderecoModalItem, setEnderecoModalItem] = useState(null);
   const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);
+
+  const alunosPorId = useMemo(
+    () => new Map(alunos.map((a) => [a.id, a])),
+    [alunos]
+  );
 
   const totalAlunos = trajeto.filter((t) => t.tipo === 'aluno').length;
   const totalEscolas = trajeto.length - totalAlunos;
@@ -92,14 +99,17 @@ function FormularioItinerario({ itinerario, paradas, alunos, escolas }) {
     if (addModal === 'aluno') {
       return alunos
         .filter((a) => !noTrajeto.has(`aluno-${a.id}`))
-        .map((a) => ({
-          id: a.id,
-          nome: a.name,
-          escola: a.school?.name,
-          sala: a.classroom,
-          responsavel: a.guardians?.[0]?.name,
-          address: a.guardians?.[0]?.address,
-        }));
+        .map((a) => {
+          const principal = responsavelPrincipal(a.guardians);
+          return {
+            id: a.id,
+            nome: a.name,
+            escola: a.school?.name,
+            sala: a.classroom,
+            responsavel: principal?.name,
+            address: principal?.address,
+          };
+        });
     }
     if (addModal === 'escola') {
       return escolas
@@ -108,6 +118,18 @@ function FormularioItinerario({ itinerario, paradas, alunos, escolas }) {
     }
     return [];
   }, [addModal, trajeto, alunos, escolas]);
+
+  const selecionarEnderecoParada = (paradaKey, guardian) => {
+    setTrajeto((prev) =>
+      prev.map((item) =>
+        item.key === paradaKey
+          ? { ...item, responsavel: guardian.name, address: guardian.address }
+          : item
+      )
+    );
+    setResumoOtimizacao(null);
+    setEnderecoModalItem(null);
+  };
 
   const adicionar = (option) => {
     setTrajeto((prev) =>
@@ -197,6 +219,12 @@ function FormularioItinerario({ itinerario, paradas, alunos, escolas }) {
   const renderItem = useCallback(
     ({ item, index }) => {
       const isEscola = item.tipo === 'escola';
+      const responsaveisAluno = isEscola
+        ? []
+        : (alunosPorId.get(item.id)?.guardians || []).filter((g) => g?.address?.id);
+      const podeTrocarEndereco = responsaveisAluno.length > 1;
+      const enderecoTexto = formatEndereco(item.address);
+
       return (
         <View style={[styles.stop, isEscola && styles.stopEscola]}>
           <Sortable.Handle>
@@ -225,6 +253,21 @@ function FormularioItinerario({ itinerario, paradas, alunos, escolas }) {
                 <Text style={styles.stopMeta} numberOfLines={1}>
                   Resp.: {item.responsavel || '-'}
                 </Text>
+                {enderecoTexto ? (
+                  <Text style={styles.stopAddr} numberOfLines={1}>
+                    {enderecoTexto}
+                  </Text>
+                ) : null}
+                {podeTrocarEndereco ? (
+                  <TouchableOpacity
+                    style={styles.changeAddrBtn}
+                    onPress={() => setEnderecoModalItem(item)}
+                    hitSlop={6}
+                  >
+                    <Ionicons name="location-outline" size={13} color={colors.primaryDark} />
+                    <Text style={styles.changeAddrText}>Trocar endereço ({responsaveisAluno.length})</Text>
+                  </TouchableOpacity>
+                ) : null}
               </>
             )}
           </View>
@@ -235,7 +278,7 @@ function FormularioItinerario({ itinerario, paradas, alunos, escolas }) {
         </View>
       );
     },
-    [remover]
+    [remover, alunosPorId]
   );
 
   return (
@@ -407,6 +450,57 @@ function FormularioItinerario({ itinerario, paradas, alunos, escolas }) {
           </Pressable>
         </Pressable>
       </Modal>
+
+      <Modal
+        visible={Boolean(enderecoModalItem)}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setEnderecoModalItem(null)}
+      >
+        <Pressable style={styles.overlay} onPress={() => setEnderecoModalItem(null)}>
+          <Pressable
+            style={[styles.sheet, { paddingBottom: 16 + insets.bottom }]}
+            onPress={(e) => e.stopPropagation()}
+          >
+            <Text style={styles.sheetTitle}>Escolher endereço na rota</Text>
+            {enderecoModalItem ? (
+              <>
+                <Text style={styles.sheetSubtitle}>
+                  Selecione qual endereço será usado para {enderecoModalItem.nome} neste itinerário:
+                </Text>
+                <FlatList
+                  data={(alunosPorId.get(enderecoModalItem.id)?.guardians || []).filter((g) => g?.address?.id)}
+                  keyExtractor={(g) => String(g.id)}
+                  style={styles.sheetList}
+                  renderItem={({ item: guardian }) => {
+                    const selecionado = enderecoModalItem.address?.id === guardian.address?.id;
+                    return (
+                      <TouchableOpacity
+                        style={[styles.addrOption, selecionado && styles.addrOptionAtivo]}
+                        onPress={() => selecionarEnderecoParada(enderecoModalItem.key, guardian)}
+                      >
+                        <View style={styles.flex}>
+                          <View style={styles.addrOptionHead}>
+                            <Text style={styles.sheetOptionText}>{guardian.name}</Text>
+                            {guardian.address?.principal ? (
+                              <Text style={styles.addrPrincipalTag}>Principal</Text>
+                            ) : null}
+                          </View>
+                          <Text style={styles.sheetOptionMeta}>{formatEndereco(guardian.address)}</Text>
+                        </View>
+                        {selecionado ? (
+                          <Ionicons name="checkmark-circle" size={20} color={colors.primary} />
+                        ) : null}
+                      </TouchableOpacity>
+                    );
+                  }}
+                />
+              </>
+            ) : null}
+            <Button title="Fechar" variant="outline" onPress={() => setEnderecoModalItem(null)} />
+          </Pressable>
+        </Pressable>
+      </Modal>
     </>
   );
 }
@@ -501,6 +595,21 @@ const styles = StyleSheet.create({
   stopInfo: { flex: 1 },
   stopName: { fontSize: 14, fontWeight: '700', color: colors.text },
   stopMeta: { marginTop: 2, fontSize: 12, color: colors.textMuted },
+  stopAddr: { marginTop: 2, fontSize: 11, color: colors.textSecondary },
+  changeAddrBtn: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    backgroundColor: colors.primarySoft,
+    borderWidth: 1,
+    borderColor: colors.primaryBorder,
+  },
+  changeAddrText: { fontSize: 11, fontWeight: '700', color: colors.primaryDark },
   actions: { flexDirection: 'row', gap: 10, marginTop: 4 },
   actionBtn: { flex: 1, borderRadius: 14 },
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
@@ -512,11 +621,36 @@ const styles = StyleSheet.create({
     maxHeight: '70%',
   },
   sheetTitle: { fontSize: 18, fontWeight: '700', color: colors.text, marginBottom: 8 },
+  sheetSubtitle: { fontSize: 13, color: colors.textSecondary, marginBottom: 12 },
   sheetList: { marginBottom: 12 },
   sheetOption: {
     paddingVertical: 14,
     borderBottomWidth: 1,
     borderBottomColor: colors.borderLight,
+  },
+  addrOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+    marginBottom: 8,
+  },
+  addrOptionAtivo: {
+    borderColor: colors.primary,
+    backgroundColor: colors.primarySoft,
+  },
+  addrOptionHead: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  addrPrincipalTag: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: colors.success,
+    backgroundColor: colors.successBg,
+    borderRadius: 999,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
   },
   sheetOptionText: { fontSize: 15, fontWeight: '600', color: colors.text },
   sheetOptionMeta: { marginTop: 2, fontSize: 12, color: colors.textMuted },

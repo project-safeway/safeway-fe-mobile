@@ -41,6 +41,11 @@ export function atualizarResponsavel(id, body) {
   return apiCore.put(`/guardians/${id}`, body);
 }
 
+/** GET /guardians — lista todos os responsáveis acessíveis ao motorista autenticado. */
+export function listarResponsaveis() {
+  return apiCore.get('/guardians');
+}
+
 /**
  * POST /guardians — cria um responsável avulso (o endereço é geocodificado no back-end).
  * @param {object} body GuardianRequest
@@ -52,6 +57,28 @@ export function criarResponsavel(body) {
 /** PUT /students/{studentId}/guardians/{guardianId} — vincula um responsável existente ao aluno. */
 export function vincularResponsavel(studentId, guardianId) {
   return apiCore.put(`/students/${studentId}/guardians/${guardianId}`);
+}
+
+/** DELETE /students/{studentId}/guardians/{guardianId} — remove somente o vínculo, sem excluir o responsável. */
+export function desvincularResponsavel(studentId, guardianId) {
+  return apiCore.delete(`/students/${studentId}/guardians/${guardianId}`);
+}
+
+/** Cria um novo responsável e já o vincula ao aluno informado. */
+export async function criarEVincularResponsavel(studentId, body) {
+  const criado = await criarResponsavel(body);
+  await vincularResponsavel(studentId, criado.id);
+  return criado;
+}
+
+/**
+ * Atualiza a flag `address.principal` nos responsáveis necessários via PUT /guardians/{id}.
+ * @param {{ id: string, payload: object }[]} atualizacoes retorno de `montarPayloadsDefinirPrincipal`
+ */
+export async function definirResponsavelPrincipal(atualizacoes = []) {
+  for (const item of atualizacoes) {
+    await atualizarResponsavel(item.id, item.payload);
+  }
 }
 
 /**
