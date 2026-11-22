@@ -20,6 +20,7 @@ import {
   isValidPhone,
   isRequired,
   isValidPlaca,
+  isInRange,
 } from '../../utils/validators';
 import { maskPhone, maskPlaca } from '../../utils/formatters';
 import {
@@ -38,8 +39,10 @@ export default function PerfilScreen() {
   const [nome, setNome] = useState('');
   const [email, setEmail] = useState('');
   const [telefone, setTelefone] = useState('');
+  const [telefoneSecundario, setTelefoneSecundario] = useState('');
   const [veiculo, setVeiculo] = useState('');
   const [placa, setPlaca] = useState('');
+  const [capacidade, setCapacidade] = useState('');
   const [fotoRemota, setFotoRemota] = useState(null);
   const [fotoSelecionada, setFotoSelecionada] = useState(null);
   const [fotoAlterada, setFotoAlterada] = useState(false);
@@ -58,8 +61,14 @@ export default function PerfilScreen() {
     setNome(dados.name ?? '');
     setEmail(dados.email ?? '');
     setTelefone(maskPhone(dados.primaryPhoneNumber ?? ''));
+    setTelefoneSecundario(maskPhone(dados.secondaryPhoneNumber ?? ''));
     setVeiculo(dados.transport?.model ?? '');
     setPlaca(maskPlaca(dados.transport?.licensePlate ?? ''));
+    setCapacidade(
+      dados.transport?.capacity !== null && dados.transport?.capacity !== undefined
+        ? String(dados.transport.capacity)
+        : ''
+    );
     setFotoSelecionada(null);
     setFotoAlterada(false);
     setErroFoto(false);
@@ -171,8 +180,14 @@ export default function PerfilScreen() {
     if (!isRequired(nome)) next.nome = 'Nome obrigatório';
     if (!isValidEmail(email)) next.email = 'E-mail inválido';
     if (!isValidPhone(telefone)) next.telefone = 'Telefone inválido';
+    if (telefoneSecundario && !isValidPhone(telefoneSecundario)) {
+      next.telefoneSecundario = 'Telefone inválido';
+    }
     if (!isRequired(veiculo)) next.veiculo = 'Modelo obrigatório';
     if (!isValidPlaca(placa)) next.placa = 'Placa inválida';
+    if (!isRequired(capacidade) || !isInRange(capacidade, 1, 100)) {
+      next.capacidade = 'Informe uma capacidade entre 1 e 100';
+    }
     setErrors(next);
     if (Object.keys(next).length) return;
 
@@ -183,11 +198,11 @@ export default function PerfilScreen() {
         name: nome.trim(),
         email: email.trim(),
         primaryPhoneNumber: telefone.replace(/\D/g, ''),
-        secondaryPhoneNumber: usuario.secondaryPhoneNumber,
+        secondaryPhoneNumber: telefoneSecundario.replace(/\D/g, '') || null,
         transport: {
           licensePlate: placa.replace(/[^A-Za-z0-9]/g, ''),
           model: veiculo.trim(),
-          capacity: usuario.transport?.capacity,
+          capacity: Number(capacidade),
         },
       });
       dadosSalvos = true;
@@ -301,6 +316,15 @@ export default function PerfilScreen() {
         error={errors.telefone}
       />
       <Input
+        label="Telefone secundário"
+        placeholder="(11) 99999-9999"
+        value={telefoneSecundario}
+        onChangeText={(v) => setTelefoneSecundario(maskPhone(v))}
+        leftIcon="call-outline"
+        keyboardType="phone-pad"
+        error={errors.telefoneSecundario}
+      />
+      <Input
         label="Modelo do veículo"
         value={veiculo}
         onChangeText={setVeiculo}
@@ -314,6 +338,15 @@ export default function PerfilScreen() {
         leftIcon="document-outline"
         autoCapitalize="characters"
         error={errors.placa}
+      />
+      <Input
+        label="Capacidade de passageiros"
+        placeholder="Ex.: 15"
+        value={capacidade}
+        onChangeText={(v) => setCapacidade(v.replace(/\D/g, '').slice(0, 3))}
+        leftIcon="people-outline"
+        keyboardType="number-pad"
+        error={errors.capacidade}
       />
 
       <Button title="Salvar alterações" onPress={save} loading={loading} style={styles.save} />

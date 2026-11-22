@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Alert, Image, View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { Alert, Image, ScrollView, View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -22,6 +22,13 @@ const modules = [
     description: 'Configure itinerários e horários',
     icon: 'map-outline',
     href: '/(app)/itinerarios',
+  },
+  {
+    key: 'assistente',
+    title: 'Assistente IA',
+    description: 'Comandos por voz para chamada e financeiro',
+    icon: 'mic-outline',
+    href: '/(app)/assistente',
   },
   {
     key: 'financeiro',
@@ -61,7 +68,7 @@ export default function HomeScreen() {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
-      <View style={styles.content}>
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
           <View style={styles.headerText}>
             <Text style={styles.eyebrow}>SafeWay</Text>
@@ -113,14 +120,14 @@ export default function HomeScreen() {
             </TouchableOpacity>
           ))}
         </View>
-      </View>
+      </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
-  content: { flex: 1, paddingHorizontal: 20, paddingTop: 12 },
+  content: { paddingHorizontal: 20, paddingTop: 12, paddingBottom: 24 },
   header: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -7,4 +7,13 @@ export const STATUS_PRESENCA_INFO = {
   ENTREGUE: { rotulo: 'Entregue', icone: 'flag', cor: colors.info, fundo: colors.infoBg },
 };
 
+const DA_API = {
+  PRESENT: 'PRESENTE',
+  ABSENT: 'AUSENTE',
+  DELIVERED: 'ENTREGUE',
+};
+
+/** Converte PresenceStatusEnum da core-api (PRESENT/ABSENT/DELIVERED) para o rótulo interno em português. */
+export const statusPresencaDaApi = (status) => DA_API[status] ?? 'AUSENTE';
+
 export const infoPresenca = (status) => STATUS_PRESENCA_INFO[status] ?? STATUS_PRESENCA_INFO.AUSENTE;

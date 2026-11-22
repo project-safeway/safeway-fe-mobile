@@ -15,12 +15,14 @@ import { listarChamadas } from '../../../../services/chamadas';
 import { listarAlunos } from '../../../../services/alunos';
 import { maskDate } from '../../../../utils/formatters';
 import { STATUS_CHAMADA_LABELS, TIPO_VIAGEM_LABELS } from '../../../../utils/constants';
+import { infoPresenca, statusPresencaDaApi } from '../../../../utils/presenca';
 import { useKeyboardBottomInset } from '../../../../hooks/useKeyboardBottomInset';
 
 const FILTROS_INICIAIS = {
   dataInicio: '',
   dataFim: '',
   statusChamada: '',
+  statusPresenca: '',
   escola: '',
   ordem: 'az',
 };
@@ -28,6 +30,13 @@ const FILTROS_INICIAIS = {
 const STATUS_OPTIONS = [
   { value: '', label: 'Todos' },
   ...Object.entries(STATUS_CHAMADA_LABELS).map(([value, label]) => ({ value, label })),
+];
+
+const PRESENCA_OPTIONS = [
+  { value: '', label: 'Todas' },
+  { value: 'PRESENTE', label: 'Presente' },
+  { value: 'ENTREGUE', label: 'Entregue' },
+  { value: 'AUSENTE', label: 'Ausente' },
 ];
 
 const ORDEM_OPTIONS = [
@@ -59,7 +68,7 @@ function processarHistorico(chamadas, alunos) {
         sala: presenca.classroom || '',
         data: dataCompleta.toLocaleDateString('pt-BR'),
         horarioRegistro: dataCompleta.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
-        presente: presenca.presence === 'PRESENT',
+        statusPresenca: statusPresencaDaApi(presenca.presence),
         statusChamada: chamada.status,
         dataCompleta,
       };
@@ -96,6 +105,7 @@ export default function HistoricoScreen() {
   const filtrados = useMemo(() => {
     let lista = [...historico];
     if (filtros.statusChamada) lista = lista.filter((d) => d.statusChamada === filtros.statusChamada);
+    if (filtros.statusPresenca) lista = lista.filter((d) => d.statusPresenca === filtros.statusPresenca);
     if (filtros.escola) lista = lista.filter((d) => d.escola === filtros.escola);
     const inicio = parseDataBR(filtros.dataInicio);
     if (inicio) lista = lista.filter((d) => d.dataCompleta >= inicio);
@@ -108,8 +118,12 @@ export default function HistoricoScreen() {
   }, [historico, filtros]);
 
   const setFiltro = (campo, valor) => setFiltros((prev) => ({ ...prev, [campo]: valor }));
-  const filtrosAtivos = ['dataInicio', 'dataFim', 'statusChamada', 'escola'].filter((k) => filtros[k]).length;
-  const totalPresentes = filtrados.filter((d) => d.presente).length;
+  const filtrosAtivos = ['dataInicio', 'dataFim', 'statusChamada', 'statusPresenca', 'escola'].filter(
+    (k) => filtros[k]
+  ).length;
+  const totalPresentes = filtrados.filter((d) => d.statusPresenca === 'PRESENTE').length;
+  const totalEntregues = filtrados.filter((d) => d.statusPresenca === 'ENTREGUE').length;
+  const totalAusentes = filtrados.filter((d) => d.statusPresenca === 'AUSENTE').length;
 
   const header = (
     <>
@@ -122,18 +136,16 @@ export default function HistoricoScreen() {
 
       <View style={styles.stats}>
         <Card style={styles.statCard}>
-          <Text style={styles.statLabel}>Total de Registros</Text>
-          <Text style={styles.statValue}>{filtrados.length}</Text>
-        </Card>
-        <Card style={styles.statCard}>
-          <Text style={styles.statLabel}>Presenças</Text>
+          <Text style={styles.statLabel}>Presentes</Text>
           <Text style={[styles.statValue, { color: colors.success }]}>{totalPresentes}</Text>
         </Card>
         <Card style={styles.statCard}>
+          <Text style={styles.statLabel}>Entregues</Text>
+          <Text style={[styles.statValue, { color: colors.info }]}>{totalEntregues}</Text>
+        </Card>
+        <Card style={styles.statCard}>
           <Text style={styles.statLabel}>Ausências</Text>
-          <Text style={[styles.statValue, { color: colors.error }]}>
-            {filtrados.length - totalPresentes}
-          </Text>
+          <Text style={[styles.statValue, { color: colors.error }]}>{totalAusentes}</Text>
         </Card>
       </View>
 
@@ -179,6 +191,12 @@ export default function HistoricoScreen() {
               onChange={(v) => setFiltro('statusChamada', v)}
             />
             <Select
+              label="Presença"
+              value={filtros.statusPresenca}
+              options={PRESENCA_OPTIONS}
+              onChange={(v) => setFiltro('statusPresenca', v)}
+            />
+            <Select
               label="Escola"
               value={filtros.escola}
               options={escolaOptions}
@@ -198,6 +216,10 @@ export default function HistoricoScreen() {
           </View>
         ) : null}
       </Card>
+
+      <Text style={styles.contagem}>
+        {filtrados.length} {filtrados.length === 1 ? 'registro' : 'registros'}
+      </Text>
     </>
   );
 
@@ -229,33 +251,34 @@ export default function HistoricoScreen() {
               </Card>
             )
           }
-          renderItem={({ item }) => (
-            <Card style={styles.card}>
-              <View style={styles.cardTop}>
-                <Text style={styles.aluno} numberOfLines={1}>
-                  {item.nomeAluno}
+          renderItem={({ item }) => {
+            const info = infoPresenca(item.statusPresenca);
+            return (
+              <Card style={styles.card}>
+                <View style={styles.cardTop}>
+                  <Text style={styles.aluno} numberOfLines={1}>
+                    {item.nomeAluno}
+                  </Text>
+                  <View style={[styles.badge, { backgroundColor: info.fundo }]}>
+                    <Text style={[styles.badgeText, { color: info.cor }]}>{info.rotulo}</Text>
+                  </View>
+                </View>
+                <Text style={styles.meta}>
+                  {item.escola}
+                  {item.sala ? ` • Sala ${item.sala}` : ''}
                 </Text>
-                <View style={[styles.badge, item.presente ? styles.ok : styles.no]}>
-                  <Text style={[styles.badgeText, item.presente ? styles.okText : styles.noText]}>
-                    {item.presente ? 'Presente' : 'Ausente'}
+                <Text style={styles.meta}>Responsável: {item.responsavel}</Text>
+                <View style={styles.cardBottom}>
+                  <Text style={styles.meta}>
+                    {item.data} • {item.horarioRegistro}
+                  </Text>
+                  <Text style={styles.statusChamada}>
+                    {STATUS_CHAMADA_LABELS[item.statusChamada] || item.statusChamada}
                   </Text>
                 </View>
-              </View>
-              <Text style={styles.meta}>
-                {item.escola}
-                {item.sala ? ` • Sala ${item.sala}` : ''}
-              </Text>
-              <Text style={styles.meta}>Responsável: {item.responsavel}</Text>
-              <View style={styles.cardBottom}>
-                <Text style={styles.meta}>
-                  {item.data} • {item.horarioRegistro}
-                </Text>
-                <Text style={styles.statusChamada}>
-                  {STATUS_CHAMADA_LABELS[item.statusChamada] || item.statusChamada}
-                </Text>
-              </View>
-            </Card>
-          )}
+              </Card>
+            );
+          }}
         />
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -288,6 +311,7 @@ const styles = StyleSheet.create({
   col: { flex: 1 },
   limpar: { alignSelf: 'flex-end', paddingVertical: 4 },
   limparText: { color: colors.primary, fontWeight: '600', fontSize: 13 },
+  contagem: { fontSize: 12, color: colors.textMuted, marginBottom: 8 },
   card: { paddingVertical: 14 },
   cardTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
   cardBottom: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 6 },
@@ -295,11 +319,7 @@ const styles = StyleSheet.create({
   meta: { marginTop: 2, fontSize: 12, color: colors.textMuted },
   statusChamada: { fontSize: 12, fontWeight: '600', color: colors.textSecondary },
   badge: { borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 },
-  ok: { backgroundColor: colors.successBg },
-  no: { backgroundColor: colors.errorBg },
   badgeText: { fontSize: 12, fontWeight: '700' },
-  okText: { color: colors.success },
-  noText: { color: colors.error },
   emptyCard: { alignItems: 'center', paddingVertical: 28, gap: 6 },
   emptyTitle: { fontWeight: '700', color: colors.text },
   emptyText: { textAlign: 'center', color: colors.textMuted, fontSize: 13 },
