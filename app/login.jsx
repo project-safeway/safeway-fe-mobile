@@ -116,7 +116,7 @@ export default function LoginScreen() {
 
             <TouchableOpacity
               style={styles.forgot}
-              onPress={() => Alert.alert('Em breve', 'Recuperação de senha ainda não disponível.')}
+              onPress={() => router.push('/forgot-password')}
             >
               <Text style={styles.forgotText}>Esqueceu a senha?</Text>
             </TouchableOpacity>
